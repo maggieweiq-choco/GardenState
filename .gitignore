@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+garden_agent/.env
+app/uploads/
+.DS_Store

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Garden Assistant</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-900: #1b5e20;
+      --green-700: #2e7d32;
+      --green-500: #43a047;
+      --green-200: #c8e6c9;
+      --green-50:  #f1f8e9;
+      --earth:     #6d4c41;
+      --bubble-user: #43a047;
+      --bubble-agent: #ffffff;
+      --bg: #f5f7f2;
+      --header-h: 64px;
+      --footer-h: 72px;
+      --radius: 18px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      height: var(--header-h);
+      background: var(--green-700);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 12px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    header .icon { font-size: 28px; line-height: 1; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header p  { font-size: 12px; opacity: .75; }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #69f0ae;
+      margin-left: auto;
+      box-shadow: 0 0 0 3px rgba(105,240,174,.3);
+    }
+
+    /* ── Messages ── */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+
+    .msg {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      max-width: 82%;
+      animation: fadeUp .2s ease;
+    }
+    .msg.user  { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.agent { align-self: flex-start; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .msg.agent .avatar { background: var(--green-200); }
+    .msg.user  .avatar { background: var(--green-500); }
+
+    .bubble {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 15px;
+      line-height: 1.55;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .msg.agent .bubble {
+      background: var(--bubble-agent);
+      border: 1px solid var(--green-200);
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      color: #333;
+    }
+    .msg.user .bubble {
+      background: var(--bubble-user);
+      border-bottom-right-radius: 4px;
+      color: #fff;
+    }
+
+    .bubble img {
+      max-width: 220px;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    /* typing indicator */
+    .typing .bubble { padding: 14px 16px; }
+    .dots { display: flex; gap: 5px; }
+    .dots span {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green-500);
+      animation: bounce .9s infinite ease-in-out;
+    }
+    .dots span:nth-child(2) { animation-delay: .15s; }
+    .dots span:nth-child(3) { animation-delay: .3s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40%            { transform: translateY(-7px); }
+    }
+
+    /* ── Input bar ── */
+    footer {
+      height: var(--footer-h);
+      background: #fff;
+      border-top: 1px solid var(--green-200);
+      padding: 10px 12px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    #photo-btn {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      border: none;
+      background: var(--green-50);
+      color: var(--green-700);
+      font-size: 20px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background .15s;
+    }
+    #photo-btn:hover { background: var(--green-200); }
+
+    #input {
+      flex: 1;
+      border: 1.5px solid var(--green-200);
+      border-radius: 22px;
+      padding: 10px 16px;
+      font-size: 15px;
+      line-height: 1.4;
+      resize: none;
+      max-height: 120px;
+      outline: none;
+      transition: border-color .15s;
+      font-family: inherit;
+    }
+    #input:focus { border-color: var(--green-500); }
+    #input::placeholder { color: #aaa; }
+
+    #send-btn {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      border: none;
+      background: var(--green-500);
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background .15s, transform .1s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #send-btn:hover  { background: var(--green-700); }
+    #send-btn:active { transform: scale(.92); }
+    #send-btn:disabled { background: #ccc; cursor: default; transform: none; }
+
+    /* photo preview strip above input */
+    #preview-strip {
+      position: absolute;
+      bottom: calc(var(--footer-h) + 4px);
+      left: 12px;
+      display: flex;
+      gap: 8px;
+    }
+    .preview-thumb {
+      position: relative;
+      width: 56px; height: 56px;
+    }
+    .preview-thumb img {
+      width: 56px; height: 56px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 2px solid var(--green-500);
+    }
+    .preview-thumb .rm {
+      position: absolute; top: -6px; right: -6px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #e53935;
+      color: #fff;
+      font-size: 11px;
+      border: none;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* welcome message */
+    .welcome {
+      text-align: center;
+      color: #888;
+      font-size: 14px;
+      padding: 40px 20px;
+    }
+    .welcome .big { font-size: 48px; margin-bottom: 12px; }
+    .welcome h2 { color: var(--green-700); margin-bottom: 6px; font-size: 18px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="icon">🌿</span>
+  <div>
+    <h1>Garden Assistant</h1>
+    <p>Powered by Gemini + MongoDB</p>
+  </div>
+  <div class="status-dot" title="Online"></div>
+</header>
+
+<div id="messages">
+  <div class="welcome">
+    <div class="big">🌱</div>
+    <h2>Hello, Gardener!</h2>
+    <p>Ask me about your plants, sensor readings,<br>watering schedules, or upload a photo for advice.</p>
+  </div>
+</div>
+
+<div id="preview-strip"></div>
+
+<footer>
+  <button id="photo-btn" title="Upload photo">📷</button>
+  <input type="file" id="file-input" accept="image/*" capture="environment" multiple hidden>
+  <textarea id="input" placeholder="Ask about your garden…" rows="1"></textarea>
+  <button id="send-btn">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+    </svg>
+  </button>
+</footer>
+
+<script>
+  const messagesEl  = document.getElementById('messages');
+  const inputEl     = document.getElementById('input');
+  const sendBtn     = document.getElementById('send-btn');
+  const photoBtn    = document.getElementById('photo-btn');
+  const fileInput   = document.getElementById('file-input');
+  const previewStrip = document.getElementById('preview-strip');
+
+  // Persist session across page reloads
+  const SESSION_ID = sessionStorage.getItem('garden_session') || crypto.randomUUID();
+  sessionStorage.setItem('garden_session', SESSION_ID);
+
+  let pendingPhotos = []; // { dataUrl, file }
+  let busy = false;
+
+  // ── Auto-resize textarea ──
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  });
+
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  sendBtn.addEventListener('click', sendMessage);
+  photoBtn.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', async () => {
+    for (const file of fileInput.files) {
+      const dataUrl = await readAsDataURL(file);
+      pendingPhotos.push({ dataUrl, file });
+    }
+    fileInput.value = '';
+    renderPreviews();
+  });
+
+  function readAsDataURL(file) {
+    return new Promise(res => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.readAsDataURL(file);
+    });
+  }
+
+  function renderPreviews() {
+    previewStrip.innerHTML = '';
+    pendingPhotos.forEach((p, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'preview-thumb';
+      wrap.innerHTML = `<img src="${p.dataUrl}"><button class="rm" data-i="${i}">✕</button>`;
+      previewStrip.appendChild(wrap);
+    });
+    previewStrip.querySelectorAll('.rm').forEach(btn => {
+      btn.addEventListener('click', () => {
+        pendingPhotos.splice(+btn.dataset.i, 1);
+        renderPreviews();
+      });
+    });
+  }
+
+  // ── Upload photos, return descriptive text ──
+  async function uploadPendingPhotos() {
+    const urls = [];
+    for (const p of pendingPhotos) {
+      const fd = new FormData();
+      fd.append('file', p.file);
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: fd });
+        const { url } = await res.json();
+        urls.push(url);
+      } catch (e) {
+        console.error('upload failed', e);
+      }
+    }
+    return urls;
+  }
+
+  // ── Add a message bubble ──
+  function addMessage(role, text, imageUrls = []) {
+    // Remove welcome card on first message
+    const welcome = messagesEl.querySelector('.welcome');
+    if (welcome) welcome.remove();
+
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'user' ? '🧑' : '🌿';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+
+    imageUrls.forEach(url => {
+      const img = document.createElement('img');
+      img.src = url;
+      bubble.appendChild(img);
+    });
+
+    if (text) {
+      const span = document.createElement('span');
+      span.className = 'text';
+      span.textContent = text;
+      bubble.appendChild(span);
+    } else {
+      const span = document.createElement('span');
+      span.className = 'text';
+      bubble.appendChild(span);
+    }
+
+    wrap.appendChild(avatar);
+    wrap.appendChild(bubble);
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
+    return wrap;
+  }
+
+  function addTyping() {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg agent typing';
+    wrap.innerHTML = `
+      <div class="avatar">🌿</div>
+      <div class="bubble"><div class="dots"><span></span><span></span><span></span></div></div>`;
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
+    return wrap;
+  }
+
+  function scrollToBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // ── Send ──
+  async function sendMessage() {
+    if (busy) return;
+    const text = inputEl.value.trim();
+    if (!text && pendingPhotos.length === 0) return;
+
+    busy = true;
+    sendBtn.disabled = true;
+
+    // Upload photos first
+    const photoUrls = await uploadPendingPhotos();
+    const photos = [...pendingPhotos];
+    pendingPhotos = [];
+    renderPreviews();
+
+    // Build display URLs from local previews for instant display
+    const localUrls = photos.map(p => p.dataUrl);
+
+    // Show user bubble
+    const userMsg = text || '📷 Photo';
+    addMessage('user', userMsg, localUrls);
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    // Build message with photo context
+    let fullMessage = text;
+    if (photoUrls.length > 0) {
+      fullMessage += (text ? '\n\n' : '') +
+        `[User uploaded ${photoUrls.length} photo(s): ${photoUrls.join(', ')}. Please analyse the garden in the photo(s) and provide care advice.]`;
+    }
+
+    // Typing indicator
+    const typingEl = addTyping();
+
+    try {
+      const response = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: fullMessage, session_id: SESSION_ID }),
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      typingEl.remove();
+      const agentMsg = addMessage('agent', '');
+      const textSpan = agentMsg.querySelector('.text');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textSpan.textContent += decoder.decode(value, { stream: true });
+        scrollToBottom();
+      }
+    } catch (err) {
+      typingEl.remove();
+      addMessage('agent', `Sorry, something went wrong: ${err.message}`);
+    } finally {
+      busy = false;
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+</script>
+</body>
+</html>
