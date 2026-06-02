@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -9,6 +10,7 @@ load_dotenv(Path(__file__).parent.parent / "garden_agent" / ".env", override=Fal
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pymongo
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
@@ -28,35 +30,120 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── ADK runner ──
 session_service = InMemorySessionService()
 runner = Runner(agent=root_agent, app_name="garden", session_service=session_service)
+
+# ── MongoDB (direct, for user management) ──
+_mongo = pymongo.MongoClient(os.environ["MDB_MCP_CONNECTION_STRING"])
+_db = _mongo["garden"]
+users_col = _db["users"]
+users_col.create_index("email", unique=True)
 
 UPLOADS_DIR = Path(__file__).parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 
+# ════════════════════════════════
+#  Models
+# ════════════════════════════════
+class LoginRequest(BaseModel):
+    email: str
+    username: str
+
+class GardenRequest(BaseModel):
+    email: str
+    garden_type: str
+
+class LocationRequest(BaseModel):
+    email: str
+    location: str
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str
+    garden_type: str = ""
+    username: str = ""
+    location: str = ""
 
 
+# ════════════════════════════════
+#  User / Garden endpoints
+# ════════════════════════════════
+def _user_doc(email: str) -> dict:
+    doc = users_col.find_one({"email": email}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="User not found")
+    return doc
+
+
+@app.post("/api/login")
+def login(req: LoginRequest):
+    existing = users_col.find_one({"email": req.email}, {"_id": 0})
+    if existing:
+        return existing
+    doc = {
+        "email": req.email,
+        "username": req.username,
+        "gardens": [],
+        "location": "",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    users_col.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@app.post("/api/gardens")
+def add_garden(req: GardenRequest):
+    users_col.update_one(
+        {"email": req.email},
+        {"$addToSet": {"gardens": req.garden_type}},
+    )
+    return {"gardens": _user_doc(req.email)["gardens"]}
+
+
+@app.patch("/api/user/location")
+def update_location(req: LocationRequest):
+    users_col.update_one({"email": req.email}, {"$set": {"location": req.location}})
+    return {"location": req.location}
+
+
+@app.delete("/api/gardens")
+def remove_garden(req: GardenRequest):
+    users_col.update_one(
+        {"email": req.email},
+        {"$pull": {"gardens": req.garden_type}},
+    )
+    return {"gardens": _user_doc(req.email)["gardens"]}
+
+
+# ════════════════════════════════
+#  Chat
+# ════════════════════════════════
 @app.post("/chat")
 async def chat(req: ChatRequest):
     try:
         await session_service.create_session(
             app_name="garden",
-            user_id="user",
+            user_id=req.session_id,
             session_id=req.session_id,
         )
     except Exception:
         pass
 
+    # Prepend garden context so the agent knows what it's managing
+    context = ""
+    if req.username and req.garden_type:
+        loc = f" in {req.location}" if req.location else ""
+        context = f"[Context: Managing {req.username}'s {req.garden_type}{loc}]\n"
+    full_message = context + req.message
+
     async def generate():
         try:
             async for event in runner.run_async(
-                user_id="user",
+                user_id=req.session_id,
                 session_id=req.session_id,
-                new_message=Content(role="user", parts=[Part(text=req.message)]),
+                new_message=Content(role="user", parts=[Part(text=full_message)]),
             ):
                 if event.is_final_response() and event.content:
                     for part in event.content.parts:
@@ -68,6 +155,9 @@ async def chat(req: ChatRequest):
     return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
 
 
+# ════════════════════════════════
+#  Photo upload
+# ════════════════════════════════
 @app.post("/upload")
 async def upload_photo(file: UploadFile = File(...)):
     if not file.content_type or not file.content_type.startswith("image/"):

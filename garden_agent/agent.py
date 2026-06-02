@@ -37,10 +37,7 @@ root_agent = Agent(
             connection_params=StdioConnectionParams(
                 server_params=StdioServerParameters(
                     command="npx",
-                    args=[
-                        "-y", "mongodb-mcp-server",
-                        "--previewFeatures", "search",
-                    ],
+                    args=["-y", "mongodb-mcp-server"],
                     env={
                         **os.environ,
                         "MDB_MCP_CONNECTION_STRING": CONNECTION_STRING,
