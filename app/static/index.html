@@ -81,6 +81,30 @@
     }
     .login-btn:hover { background: var(--g700); }
 
+    .guest-btn {
+      display: block;
+      width: 100%;
+      background: none;
+      color: #aaa;
+      border: none;
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 14px;
+      padding: 4px;
+      transition: color .15s;
+    }
+    .guest-btn:hover { color: var(--g700); }
+
+    #guest-banner {
+      background: #fff8e1;
+      border-bottom: 1px solid #ffe082;
+      color: #f57f17;
+      font-size: 12px;
+      padding: 6px 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
     /* ════════════════════════════
        APP LAYOUT
     ════════════════════════════ */
@@ -450,6 +474,7 @@
     <input id="l-email" type="email"  placeholder="Email address" autocomplete="email">
     <input id="l-name"  type="text"   placeholder="Your name"     autocomplete="name">
     <button class="login-btn" onclick="doLogin()">Enter Garden →</button>
+    <button class="guest-btn" onclick="doGuest()">Continue without signing in</button>
   </div>
 </div>
 
@@ -490,6 +515,8 @@
       </div>
       <div class="online-dot"></div>
     </div>
+
+    <div id="guest-banner" hidden>⚠️ Guest mode — your garden data won't be saved</div>
 
     <div id="messages">
       <div class="welcome">
@@ -580,11 +607,17 @@ function doLogout() {
   document.getElementById('app-screen').hidden   = true;
 }
 
+function doGuest() {
+  user = { email: null, username: 'Guest', gardens: [], location: '', isGuest: true };
+  showApp();
+}
+
 function showApp() {
   document.getElementById('login-screen').hidden = true;
   document.getElementById('app-screen').hidden   = false;
   document.getElementById('sb-name').textContent  = user.username;
-  document.getElementById('sb-email').textContent = user.email;
+  document.getElementById('sb-email').textContent = user.isGuest ? 'Guest — data not saved' : user.email;
+  document.getElementById('guest-banner').hidden  = !user.isGuest;
   renderList();
 }
 
@@ -650,13 +683,15 @@ async function submitLocation() {
   document.getElementById('loc-submit-btn').disabled = true;
   document.getElementById('loc-submit-btn').textContent = '…';
 
-  await fetch('/api/user/location', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: user.email, location: val }),
-  });
+  if (!user.isGuest) {
+    await fetch('/api/user/location', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.email, location: val }),
+    });
+    localStorage.setItem('guser', JSON.stringify({ ...user, location: val }));
+  }
   user.location = val;
-  localStorage.setItem('guser', JSON.stringify(user));
   updateLocChip(val);
   generateInstructions(activeGarden);
 }
@@ -719,12 +754,16 @@ async function generateInstructions(t) {
 
 async function removeGarden(id) {
   if (!confirm('Remove this garden?')) return;
-  const r = await fetch('/api/gardens', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: user.email, garden_type: id }),
-  });
-  user.gardens = (await r.json()).gardens;
+  if (!user.isGuest) {
+    const r = await fetch('/api/gardens', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: user.email, garden_type: id }),
+    });
+    user.gardens = (await r.json()).gardens;
+  } else {
+    user.gardens = user.gardens.filter(g => g !== id);
+  }
   localStorage.setItem('guser', JSON.stringify(user));
   if (activeGarden?.id === id) {
     activeGarden = null;
@@ -785,16 +824,20 @@ function closeModal() {
 
 async function confirmAdd() {
   if (!pickedTypes.size) return;
-  let lastGardens = user.gardens;
-  for (const id of pickedTypes) {
-    const r = await fetch('/api/gardens', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, garden_type: id }),
-    });
-    lastGardens = (await r.json()).gardens;
+  if (!user.isGuest) {
+    let lastGardens = user.gardens;
+    for (const id of pickedTypes) {
+      const r = await fetch('/api/gardens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, garden_type: id }),
+      });
+      lastGardens = (await r.json()).gardens;
+    }
+    user.gardens = lastGardens;
+  } else {
+    pickedTypes.forEach(id => { if (!user.gardens.includes(id)) user.gardens.push(id); });
   }
-  user.gardens = lastGardens;
   localStorage.setItem('guser', JSON.stringify(user));
   const firstType = TYPES.find(x => x.id === [...pickedTypes][0]);
   closeModal();
