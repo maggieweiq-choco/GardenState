@@ -2,7 +2,96 @@ import os
 import math
 import random
 import httpx
+import pymongo
+from google import genai as _genai_module
 from datetime import datetime
+
+_mongo_client: pymongo.MongoClient | None = None
+_genai_client = None
+
+
+def _garden_db():
+    global _mongo_client
+    if _mongo_client is None:
+        _mongo_client = pymongo.MongoClient(os.environ["MDB_MCP_CONNECTION_STRING"])
+    return _mongo_client["garden"]
+
+
+def _memory_col():
+    return _garden_db()["user_memories"]
+
+
+def _get_genai():
+    global _genai_client
+    if _genai_client is None:
+        _genai_client = _genai_module.Client()
+    return _genai_client
+
+
+def save_memory(user_id: str, fact: str) -> dict:
+    """Save an important fact about this user's garden to long-term memory for future sessions.
+
+    Call this whenever you learn something new and lasting: new plants added, watering
+    preferences, known pests or issues, care style (organic, etc.), or any preference
+    the user expresses. Use the user_id from the [Context] header.
+    """
+    _memory_col().update_one(
+        {"user_id": user_id},
+        {
+            "$addToSet": {"facts": fact},
+            "$set": {"updated_at": datetime.utcnow().isoformat()},
+        },
+        upsert=True,
+    )
+    return {"status": "saved", "user_id": user_id, "fact": fact}
+
+
+def load_memories(user_id: str) -> list[str]:
+    doc = _memory_col().find_one({"user_id": user_id}, {"facts": 1})
+    return doc.get("facts", []) if doc else []
+
+
+def search_care_knowledge(query: str) -> list[dict]:
+    """Search the plant care knowledge base using semantic vector search.
+
+    Call this for any question about plant care: watering schedules, sunlight needs,
+    fertilising, common pests, pruning, soil type, etc. Returns the top matching passages.
+    """
+    try:
+        result = _get_genai().models.embed_content(
+            model="gemini-embedding-001",
+            contents=query,
+        )
+        vector = result.embeddings[0].values
+    except Exception as e:
+        return [{"error": f"Embedding failed: {e}"}]
+
+    pipeline = [
+        {
+            "$vectorSearch": {
+                "index": "care_knowledge_vector_idx",
+                "path": "embedding",
+                "queryVector": vector,
+                "numCandidates": 50,
+                "limit": 3,
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "plant": 1,
+                "topic": 1,
+                "text": 1,
+                "score": {"$meta": "vectorSearchScore"},
+            }
+        },
+    ]
+
+    try:
+        results = list(_garden_db()["care_knowledge"].aggregate(pipeline))
+        return results if results else [{"message": "No relevant passages found."}]
+    except Exception as e:
+        return [{"error": str(e), "hint": "Run seed_knowledge.py then create the Atlas Vector Search index."}]
 
 
 _WMO_CODES = {

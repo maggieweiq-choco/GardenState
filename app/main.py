@@ -18,9 +18,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from garden_agent.agent import root_agent
+from garden_agent.tools import load_memories
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from google.genai.types import Content, Part
+from google.genai.types import Content, Part, Blob
 
 app = FastAPI()
 app.add_middleware(
@@ -59,9 +60,15 @@ class LocationRequest(BaseModel):
     email: str
     location: str
 
+_MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+             ".gif": "image/gif", ".webp": "image/webp"}
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str
+    user_id: str = ""   # stable per-user identifier (email); falls back to session_id for guests
+    photo_id: str = ""  # optional: photo_id returned by /upload
     garden_type: str = ""
     username: str = ""
     location: str = ""
@@ -122,28 +129,48 @@ def remove_garden(req: GardenRequest):
 # ════════════════════════════════
 @app.post("/chat")
 async def chat(req: ChatRequest):
+    # Use stable user_id (email) for ADK user scoping; guests fall back to session_id
+    user_id = req.user_id or req.session_id
+
     try:
         await session_service.create_session(
             app_name="garden",
-            user_id=req.session_id,
+            user_id=user_id,
             session_id=req.session_id,
         )
     except Exception:
         pass
 
-    # Prepend garden context so the agent knows what it's managing
-    context = ""
-    if req.username and req.garden_type:
-        loc = f" in {req.location}" if req.location else ""
-        context = f"[Context: Managing {req.username}'s {req.garden_type}{loc}]\n"
+    # Build context header
+    loc = f" in {req.location}" if req.location else ""
+    garden_part = f", garden={req.garden_type}{loc}" if req.garden_type else ""
+    user_part = f", user={req.username}" if req.username else ""
+    context = f"[Context: user_id={user_id}{user_part}{garden_part}]\n"
+
+    # Inject long-term memory from MongoDB
+    memories = load_memories(user_id)
+    if memories:
+        facts = "\n".join(f"- {f}" for f in memories)
+        context += f"[Long-term memory:\n{facts}]\n"
+
     full_message = context + req.message
+
+    # Build multimodal parts: optional image first, then text
+    parts: list[Part] = []
+    if req.photo_id:
+        candidates = list(UPLOADS_DIR.glob(f"{req.photo_id}.*"))
+        if candidates:
+            img_path = candidates[0]
+            mime = _MIME_MAP.get(img_path.suffix.lower(), "image/jpeg")
+            parts.append(Part(inline_data=Blob(mime_type=mime, data=img_path.read_bytes())))
+    parts.append(Part(text=full_message + ("\n[Photo attached — please analyse the plant in the image.]" if req.photo_id else "")))
 
     async def generate():
         try:
             async for event in runner.run_async(
-                user_id=req.session_id,
+                user_id=user_id,
                 session_id=req.session_id,
-                new_message=Content(role="user", parts=[Part(text=full_message)]),
+                new_message=Content(role="user", parts=parts),
             ):
                 if event.is_final_response() and event.content:
                     for part in event.content.parts:

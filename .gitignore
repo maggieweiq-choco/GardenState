@@ -4,3 +4,4 @@ __pycache__/
 garden_agent/.env
 app/uploads/
 .DS_Store
+garden_agent/.adk/
