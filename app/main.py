@@ -41,6 +41,7 @@ _db = _mongo["garden"]
 users_col = _db["users"]
 users_col.create_index("email", unique=True)
 
+# TODO: move uploads to GCS for multi-instance (local disk is ephemeral per Cloud Run instance)
 UPLOADS_DIR = Path(__file__).parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
@@ -157,13 +158,16 @@ async def chat(req: ChatRequest):
 
     # Build multimodal parts: optional image first, then text
     parts: list[Part] = []
+    image_loaded = False
     if req.photo_id:
         candidates = list(UPLOADS_DIR.glob(f"{req.photo_id}.*"))
         if candidates:
             img_path = candidates[0]
             mime = _MIME_MAP.get(img_path.suffix.lower(), "image/jpeg")
             parts.append(Part(inline_data=Blob(mime_type=mime, data=img_path.read_bytes())))
-    parts.append(Part(text=full_message + ("\n[Photo attached — please analyse the plant in the image.]" if req.photo_id else "")))
+            image_loaded = True
+    suffix = "\n[Photo attached — please analyse the plant in the image.]" if image_loaded else ""
+    parts.append(Part(text=full_message + suffix))
 
     async def generate():
         try:

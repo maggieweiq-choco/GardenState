@@ -43,6 +43,8 @@ gcloud run deploy $SERVICE_NAME \
   --allow-unauthenticated \
   --memory 512Mi \
   --timeout 3600 \
+  --min-instances=1 \
+  --max-instances=1 \
   --set-env-vars="MDB_MCP_CONNECTION_STRING=$MDB_MCP_CONNECTION_STRING,GOOGLE_API_KEY=$GOOGLE_API_KEY"
 
 if [ $? -eq 0 ]; then
