@@ -43,6 +43,22 @@ _db = _mongo["garden"]
 users_col = _db["users"]
 users_col.create_index("email", unique=True)
 
+# Cards = care subjects (one plant → whole garden). Reuse the `plants` collection
+# the agent's MongoDB MCP CRUD already targets, so cards and agent state share storage.
+cards_col = _db["plants"]
+cards_col.create_index("user_id")
+
+# Card "kind" facet — must match the frontend KIND set.
+CARD_KINDS = {"plant", "bed", "lawn", "indoor", "garden"}
+
+# Legacy `users.gardens` type ids → display label, mirroring the frontend TYPES list.
+# Used by the GET /api/cards migration shim.
+_LEGACY_TYPE_LABELS = {
+    "flower": "Flower Garden", "lawn": "Lawn & Grass", "orchard": "Orchard",
+    "vegetable": "Vegetable Garden", "tree": "Trees & Shrubs", "herb": "Herb Garden",
+    "berry": "Berry Garden", "tropical": "Tropical Plants",
+}
+
 # TODO: move uploads to GCS for multi-instance (local disk is ephemeral per Cloud Run instance)
 UPLOADS_DIR = Path(__file__).parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -62,6 +78,14 @@ class GardenRequest(BaseModel):
 class LocationRequest(BaseModel):
     email: str
     location: str
+
+class CardRequest(BaseModel):
+    user_id: str            # email
+    name: str
+    kind: str               # plant | bed | lawn | indoor | garden
+    tags: list[str] = []
+    species: str = ""
+    photo_id: str = ""
 
 _MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
              ".gif": "image/gif", ".webp": "image/webp",
@@ -168,6 +192,66 @@ def remove_garden(req: GardenRequest):
         {"$pull": {"gardens": req.garden_type}},
     )
     return {"gardens": _user_doc(req.email)["gardens"]}
+
+
+# ════════════════════════════════
+#  Cards (care subjects)
+# ════════════════════════════════
+def _migrate_legacy_gardens(user_id: str) -> list[dict]:
+    """One-time shim: a user with legacy `users.gardens` but no cards gets one
+    `kind="bed"` area card per legacy type. `users.gardens` is left untouched."""
+    user = users_col.find_one({"email": user_id}, {"_id": 0, "gardens": 1})
+    legacy = (user or {}).get("gardens") or []
+    cards = []
+    for type_id in legacy:
+        cards.append({
+            "_id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "name": _LEGACY_TYPE_LABELS.get(type_id, type_id),
+            "kind": "bed",
+            "species": "",
+            "tags": [type_id],
+            "photo_id": "",
+            "created_at": datetime.utcnow().isoformat(),
+        })
+    if cards:
+        cards_col.insert_many(cards)
+    return cards
+
+
+@app.get("/api/cards")
+def list_cards(user_id: str = Query(...)):
+    # `_id` is already a str (uuid), so the docs serialize as-is.
+    cards = list(cards_col.find({"user_id": user_id}))
+    if not cards:
+        cards = _migrate_legacy_gardens(user_id)
+    return {"cards": cards}
+
+
+@app.post("/api/cards")
+def create_card(req: CardRequest):
+    if req.kind not in CARD_KINDS:
+        raise HTTPException(status_code=400, detail=f"Invalid kind: {req.kind}")
+    card = {
+        "_id": str(uuid.uuid4()),
+        "user_id": req.user_id,
+        "name": req.name,
+        "kind": req.kind,
+        "species": req.species,
+        "tags": req.tags,
+        "photo_id": req.photo_id,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    cards_col.insert_one(card)
+    return card
+
+
+@app.delete("/api/cards/{card_id}")
+def delete_card(card_id: str, user_id: str = Query(...)):
+    res = cards_col.delete_one({"_id": card_id, "user_id": user_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return {"deleted": card_id}
 
 
 # ════════════════════════════════
