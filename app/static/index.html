@@ -472,6 +472,14 @@
     .type-opt .te { font-size: 26px; display: block; margin-bottom: 4px; }
     .type-opt .tl { font-size: 12px; color: #555; }
 
+    .card-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+    .card-form input, .card-form select {
+      width: 100%; padding: 11px 12px;
+      border: 1.5px solid #e8e8e8; border-radius: 10px;
+      font-size: 14px; background: #fff; color: var(--g900);
+    }
+    .card-form input:focus, .card-form select:focus { outline: none; border-color: var(--g500); }
+
     .modal-row { display: flex; gap: 10px; }
     .modal-row button { flex: 1; padding: 11px; border-radius: 10px; border: none; font-size: 14px; cursor: pointer; }
     .btn-cancel { background: #f4f4f4; color: #777; }
@@ -528,7 +536,7 @@
 
     <div class="sb-section">My Gardens</div>
     <div id="garden-list"></div>
-    <button class="add-btn" onclick="openModal()">＋ Add Garden Type</button>
+    <button class="add-btn" onclick="openModal()">＋ Add Card</button>
     <button class="logout-btn" onclick="doLogout()">⬅ Sign out</button>
   </div>
 
@@ -538,7 +546,7 @@
       <button id="menu-btn" onclick="toggleSidebar()">☰</button>
       <div>
         <div id="chat-title">Garden Assistant</div>
-        <div id="chat-subtitle">Select a garden to start</div>
+        <div id="chat-subtitle">Select a card to start</div>
       </div>
       <div id="loc-chip" hidden>
         📍 <span id="loc-chip-text"></span>
@@ -578,12 +586,23 @@
 ════════════════════════════ -->
 <div id="modal-overlay" hidden>
   <div class="modal">
-    <h3>Add a Garden Type</h3>
-    <p>Choose what kind of garden you want to manage</p>
-    <div class="type-grid" id="type-grid"></div>
+    <h3>Add a Card</h3>
+    <p>A card is anything you care for — one plant, a bed, a lawn, or the whole garden.</p>
+    <div class="card-form">
+      <input id="card-name" type="text" placeholder="Name (e.g. Front-yard narcissus)"
+             oninput="updateAddBtn()" onkeydown="if(event.key==='Enter') confirmAdd()">
+      <select id="card-kind">
+        <option value="plant">🌱 Plant</option>
+        <option value="bed">🌸 Bed</option>
+        <option value="lawn">🌿 Lawn</option>
+        <option value="indoor">🪴 Indoor</option>
+        <option value="garden">🏡 Whole garden</option>
+      </select>
+      <input id="card-tags" type="text" placeholder="Tags, comma-separated (optional)">
+    </div>
     <div class="modal-row">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-      <button class="btn-ok" id="modal-ok" disabled onclick="confirmAdd()">Add Garden</button>
+      <button class="btn-ok" id="modal-ok" disabled onclick="confirmAdd()">Add Card</button>
     </div>
   </div>
 </div>
@@ -592,25 +611,18 @@
 // ════════════════════════════
 //  Data
 // ════════════════════════════
-const TYPES = [
-  { id: "flower",    label: "Flower Garden",    emoji: "🌸" },
-  { id: "lawn",      label: "Lawn & Grass",     emoji: "🌿" },
-  { id: "orchard",   label: "Orchard",          emoji: "🍎" },
-  { id: "vegetable", label: "Vegetable Garden", emoji: "🥕" },
-  { id: "tree",      label: "Trees & Shrubs",   emoji: "🌳" },
-  { id: "herb",      label: "Herb Garden",      emoji: "🌱" },
-  { id: "berry",     label: "Berry Garden",     emoji: "🫐" },
-  { id: "tropical",  label: "Tropical Plants",  emoji: "🌴" },
-];
+// Card kinds (facets). Emoji drives the sidebar + location-setup icon.
+const KIND_EMOJI = { plant: "🌱", bed: "🌸", lawn: "🌿", indoor: "🪴", garden: "🏡" };
+const kindEmoji = (k) => KIND_EMOJI[k] || "🌱";
 
 // ════════════════════════════
 //  State
 // ════════════════════════════
-let user         = null;   // { email, username, gardens: [] }
-let activeGarden = null;   // TYPES entry
+let user       = null;   // { email, username, location, isGuest? }
+let cards      = [];      // care subjects for this user (from /api/cards, or local for guests)
+let activeCard = null;    // the selected card object ({ id, name, kind, species, tags, ... })
 let pendingPhotos = [];
 let busy = false;
-let pickedTypes = new Set();
 
 // ════════════════════════════
 //  Login / logout
@@ -633,72 +645,112 @@ async function doLogin() {
 
 function doLogout() {
   localStorage.removeItem('guser');
-  user = null; activeGarden = null;
+  user = null; activeCard = null; cards = [];
   document.getElementById('login-screen').hidden = false;
   document.getElementById('app-screen').hidden   = true;
 }
 
 function doGuest() {
-  user = { email: null, username: 'Guest', gardens: [], location: '', isGuest: true };
+  user = { email: null, username: 'Guest', location: '', isGuest: true };
+  cards = [];
   showApp();
 }
 
-function showApp() {
+async function showApp() {
   document.getElementById('login-screen').hidden = true;
   document.getElementById('app-screen').hidden   = false;
   document.getElementById('sb-name').textContent  = user.username;
   document.getElementById('sb-email').textContent = user.isGuest ? 'Guest — data not saved' : user.email;
   document.getElementById('guest-banner').hidden  = !user.isGuest;
-  renderList();
+  await loadCards();
 }
 
 // ════════════════════════════
-//  Garden list
+//  Cards
 // ════════════════════════════
+async function loadCards() {
+  // Logged-in users get cards (incl. legacy garden→card migration) from the
+  // backend; guests keep an in-memory list (data not saved).
+  if (!user.isGuest && user.email) {
+    try {
+      const r = await fetch(`/api/cards?user_id=${encodeURIComponent(user.email)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      cards = (data.cards || []).map(c => ({ ...c, id: c._id }));
+    } catch (e) {
+      cards = [];
+      console.error('Could not load cards:', e);
+    }
+  }
+  renderList();
+}
+
 function renderList() {
   const el = document.getElementById('garden-list');
   el.innerHTML = '';
-  if (!user.gardens.length) {
-    el.innerHTML = '<div style="padding:10px 16px;font-size:13px;opacity:.55">No gardens yet.</div>';
+  if (!cards.length) {
+    el.innerHTML = '<div style="padding:10px 16px;font-size:13px;opacity:.55">No cards yet.</div>';
     return;
   }
-  user.gardens.forEach(id => {
-    const t = TYPES.find(x => x.id === id); if (!t) return;
+  cards.forEach(c => {
     const div = document.createElement('div');
-    div.className = 'g-item' + (activeGarden?.id === id ? ' active' : '');
-    div.innerHTML = `<span class="gi-emoji">${t.emoji}</span>
-                     <span class="gi-label">${t.label}</span>
+    div.className = 'g-item' + (activeCard?.id === c.id ? ' active' : '');
+    div.innerHTML = `<span class="gi-emoji">${kindEmoji(c.kind)}</span>
+                     <span class="gi-label">${esc(c.name)}</span>
                      <button class="gi-rm" title="Remove">✕</button>`;
-    div.querySelector('.gi-rm').addEventListener('click', e => { e.stopPropagation(); removeGarden(id); });
-    div.addEventListener('click', () => selectGarden(t));
+    div.querySelector('.gi-rm').addEventListener('click', e => { e.stopPropagation(); removeCard(c.id); });
+    div.addEventListener('click', () => selectCard(c));
     el.appendChild(div);
   });
 }
 
-function selectGarden(t) {
-  activeGarden = t;
+function selectCard(c) {
+  if (activeCard?.id === c.id) return;   // re-clicking the active card is a no-op
+  activeCard = c;
   renderList();
-  document.getElementById('chat-title').textContent    = t.label;
-  document.getElementById('chat-subtitle').textContent = `${user.username}'s ${t.label}`;
-  document.getElementById('input').placeholder = `Ask about your ${t.label.toLowerCase()}…`;
+  document.getElementById('chat-title').textContent    = c.name;
+  document.getElementById('chat-subtitle').textContent = c.species || `${user.username}'s ${c.kind}`;
+  document.getElementById('input').placeholder = `Ask about ${c.name}…`;
   closeSidebar();
 
   if (!user.location) {
-    showLocationSetup(t);
+    showLocationSetup(c);
   } else {
     updateLocChip(user.location);
-    generateInstructions(t);
+    loadHistoryOrPlan(c);
   }
 }
 
-function showLocationSetup(t) {
+// On open: replay the persisted transcript if any (no agent call), else
+// generate a first-time care plan.
+async function loadHistoryOrPlan(card) {
+  if (!user.isGuest && user.email) {
+    try {
+      const sid = getSessionId();
+      const r = await fetch(`/api/history?user_id=${encodeURIComponent(user.email)}&session_id=${encodeURIComponent(sid)}`);
+      if (r.ok) {
+        const { messages } = await r.json();
+        if (messages && messages.length) {
+          document.getElementById('messages').innerHTML = '';
+          messages.forEach(m => addMsg(m.role === 'user' ? 'user' : 'agent', m.text));
+          return;   // replayed from MongoDB — no agent call, no plan re-generation
+        }
+      }
+    } catch (e) {
+      console.error('Could not load history:', e);
+    }
+  }
+  generateCardPlan(card);
+}
+
+function showLocationSetup(card) {
   document.getElementById('loc-chip').hidden = true;
   document.getElementById('messages').innerHTML = `
     <div class="loc-card">
-      <div class="lc-icon">${t.emoji}</div>
+      <div class="lc-icon">${kindEmoji(card.kind)}</div>
       <h3>Where is your garden?</h3>
       <p>Enter your city, state, or ZIP code so I can check local weather
-         and create a personalised care plan for your ${t.label.toLowerCase()}.</p>
+         and create a personalised care plan for ${esc(card.name)}.</p>
       <button class="loc-gps-btn" id="loc-gps-btn" onclick="useMyLocation()">
         📍 Use my current location
       </button>
@@ -772,7 +824,7 @@ async function submitLocation() {
   }
   user.location = val;
   updateLocChip(val);
-  generateInstructions(activeGarden);
+  loadHistoryOrPlan(activeCard);
 }
 
 function updateLocChip(loc) {
@@ -785,20 +837,21 @@ function changeLocation() {
   user.location = '';
   localStorage.setItem('guser', JSON.stringify(user));
   document.getElementById('loc-chip').hidden = true;
-  if (activeGarden) showLocationSetup(activeGarden);
+  if (activeCard) showLocationSetup(activeCard);
 }
 
-async function generateInstructions(t) {
+async function generateCardPlan(card) {
   document.getElementById('messages').innerHTML = '';
 
+  const subject = card.species ? `${card.name} (${card.species})` : card.name;
   const prompt =
-    `Please generate a personalised care plan for my ${t.label} in ${user.location}. ` +
+    `Please generate a personalised care plan for ${subject} in ${user.location}. ` +
     `Call get_weather("${user.location}") first to check current conditions, then respond with:\n` +
-    `**Current Conditions** – brief weather summary and what it means for my garden\n` +
+    `**Current Conditions** – brief weather summary and what it means for it\n` +
     `**This Week's Tasks** – 3-5 specific actions I should take right now\n` +
     `**Seasonal Priorities** – what to focus on this month\n` +
     `**Watch Out For** – pests, diseases, or weather risks to monitor\n` +
-    `Keep advice practical and specific to ${t.label.toLowerCase()}.`;
+    `Keep advice practical and specific to ${subject}.`;
 
   const activity = addTyping();
   let sp = null;
@@ -811,7 +864,8 @@ async function generateInstructions(t) {
       message: prompt,
       session_id: getSessionId(),
       user_id: user.email || '',
-      garden_type: t.label,
+      card_id: card.id,
+      save_user: false,   // don't replay the engineered plan prompt as a user bubble
       username: user.username,
       location: user.location,
     }, {
@@ -826,109 +880,85 @@ async function generateInstructions(t) {
   }
 }
 
-async function removeGarden(id) {
-  if (!confirm('Remove this garden?')) return;
-  if (!user.isGuest) {
+async function removeCard(id) {
+  if (!confirm('Remove this card?')) return;
+  if (!user.isGuest && user.email) {
     try {
-      const r = await fetch('/api/gardens', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, garden_type: id }),
-      });
+      const r = await fetch(
+        `/api/cards/${encodeURIComponent(id)}?user_id=${encodeURIComponent(user.email)}`,
+        { method: 'DELETE' });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      user.gardens = (await r.json()).gardens;
     } catch (e) {
-      alert('Could not remove garden: ' + e.message);
+      alert('Could not remove card: ' + e.message);
       return;
     }
-  } else {
-    user.gardens = user.gardens.filter(g => g !== id);
   }
-  localStorage.setItem('guser', JSON.stringify(user));
-  if (activeGarden?.id === id) {
-    activeGarden = null;
+  cards = cards.filter(c => c.id !== id);
+  if (activeCard?.id === id) {
+    activeCard = null;
     document.getElementById('chat-title').textContent    = 'Garden Assistant';
-    document.getElementById('chat-subtitle').textContent = 'Select a garden to start';
+    document.getElementById('chat-subtitle').textContent = 'Select a card to start';
     document.getElementById('messages').innerHTML = `
       <div class="welcome">
         <div class="big">🌿</div>
         <h2>Welcome to your garden!</h2>
-        <p>Select a garden type on the left to start managing it.</p>
+        <p>Select a card on the left to start managing it.</p>
       </div>`;
   }
   renderList();
 }
 
 // ════════════════════════════
-//  Add garden modal
+//  Add card modal
 // ════════════════════════════
 function openModal() {
-  pickedTypes = new Set();
-  const grid = document.getElementById('type-grid');
-  grid.innerHTML = '';
-  const existing = new Set(user.gardens);
-  const available = TYPES.filter(t => !existing.has(t.id));
-
-  if (!available.length) {
-    grid.innerHTML = '<p style="grid-column:1/-1;color:#aaa;font-size:13px">All garden types already added!</p>';
-  } else {
-    available.forEach(t => {
-      const btn = document.createElement('button');
-      btn.className = 'type-opt';
-      btn.innerHTML = `<span class="te">${t.emoji}</span><span class="tl">${t.label}</span>`;
-      btn.addEventListener('click', () => {
-        if (pickedTypes.has(t.id)) {
-          pickedTypes.delete(t.id);
-          btn.classList.remove('picked');
-        } else {
-          pickedTypes.add(t.id);
-          btn.classList.add('picked');
-        }
-        const okBtn = document.getElementById('modal-ok');
-        okBtn.disabled = pickedTypes.size === 0;
-        okBtn.textContent = pickedTypes.size > 1 ? `Add ${pickedTypes.size} Gardens` : 'Add Garden';
-      });
-      grid.appendChild(btn);
-    });
-  }
-  const okBtn = document.getElementById('modal-ok');
-  okBtn.disabled = true;
-  okBtn.textContent = 'Add Garden';
+  document.getElementById('card-name').value = '';
+  document.getElementById('card-kind').value = 'plant';
+  document.getElementById('card-tags').value = '';
+  updateAddBtn();
   document.getElementById('modal-overlay').hidden = false;
+  setTimeout(() => document.getElementById('card-name')?.focus(), 50);
+}
+
+function updateAddBtn() {
+  document.getElementById('modal-ok').disabled =
+    !document.getElementById('card-name').value.trim();
 }
 
 function closeModal() {
   document.getElementById('modal-overlay').hidden = true;
-  pickedTypes = new Set();
 }
 
 async function confirmAdd() {
-  if (!pickedTypes.size) return;
-  if (!user.isGuest) {
-    let lastGardens = user.gardens;
+  const name = document.getElementById('card-name').value.trim();
+  if (!name) return;
+  const kind = document.getElementById('card-kind').value;
+  const tags = document.getElementById('card-tags').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+
+  let card;
+  if (!user.isGuest && user.email) {
     try {
-      for (const id of pickedTypes) {
-        const r = await fetch('/api/gardens', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user.email, garden_type: id }),
-        });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        lastGardens = (await r.json()).gardens;
-      }
+      const r = await fetch('/api/cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.email, name, kind, tags }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const created = await r.json();
+      card = { ...created, id: created._id };
     } catch (e) {
-      alert('Could not add garden: ' + e.message);
+      alert('Could not add card: ' + e.message);
       return;
     }
-    user.gardens = lastGardens;
   } else {
-    pickedTypes.forEach(id => { if (!user.gardens.includes(id)) user.gardens.push(id); });
+    // Guest: in-memory only (data not saved).
+    card = { id: crypto.randomUUID(), name, kind, tags, species: '' };
   }
-  localStorage.setItem('guser', JSON.stringify(user));
-  const firstType = TYPES.find(x => x.id === [...pickedTypes][0]);
+  cards.push(card);
   closeModal();
   renderList();
-  if (firstType) selectGarden(firstType);
+  selectCard(card);
 }
 
 // ════════════════════════════
@@ -1006,7 +1036,7 @@ function renderPreviews() {
 }
 
 function sessionKey() {
-  return `sid__${user?.email}__${activeGarden?.id || 'gen'}`;
+  return `sid__${user?.email}__card_${activeCard?.id || 'gen'}`;
 }
 function getSessionId() {
   const k = sessionKey();
@@ -1124,7 +1154,7 @@ async function send() {
   if (busy) return;
   const text = inputEl.value.trim();
   if (!text && !pendingPhotos.length) return;
-  if (!activeGarden) { alert('Please select a garden type first.'); return; }
+  if (!activeCard) { alert('Please select a card first.'); return; }
 
   busy = true; sendBtn.disabled = true;
 
@@ -1170,7 +1200,7 @@ async function send() {
       session_id: getSessionId(),
       user_id: user.email || '',
       photo_id: firstPhotoId,
-      garden_type: activeGarden.label,
+      card_id: activeCard.id,
       username: user.username,
       location: user.location || '',
     }, {
