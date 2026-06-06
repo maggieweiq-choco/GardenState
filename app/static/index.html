@@ -163,7 +163,7 @@
 
     .g-item {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 9px;
       padding: 9px 10px;
       border-radius: 10px;
@@ -172,17 +172,54 @@
       transition: background .14s;
     }
     .g-item:hover           { background: rgba(255,255,255,.12); }
-    .g-item.active          { background: rgba(255,255,255,.22); font-weight: 600; }
-    .g-item .gi-emoji       { font-size: 19px; }
-    .g-item .gi-label       { flex: 1; }
+    .g-item.active          { background: rgba(255,255,255,.22); }
+    .g-item .gi-thumb {
+      width: 34px; height: 34px; flex-shrink: 0;
+      border-radius: 8px; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px; background: rgba(255,255,255,.14);
+    }
+    .g-item .gi-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .g-item .gi-body  { flex: 1; min-width: 0; padding-top: 1px; }
+    .g-item .gi-name  { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .g-item.active .gi-name { font-weight: 600; }
+    .g-item .gi-sub   {
+      font-size: 11px; font-style: italic; opacity: .6;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .g-item .gi-tags  { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+    .g-item .chip {
+      font-size: 10px; line-height: 1.4;
+      padding: 1px 6px; border-radius: 999px;
+      background: rgba(255,255,255,.16);
+      white-space: nowrap;
+    }
     .g-item .gi-rm {
       opacity: 0; font-size: 14px;
       background: none; border: none; color: #fff;
       cursor: pointer; padding: 2px 5px; border-radius: 5px;
-      transition: opacity .14s;
+      transition: opacity .14s; flex-shrink: 0;
     }
     .g-item:hover .gi-rm    { opacity: .55; }
     .g-item .gi-rm:hover    { opacity: 1; background: rgba(255,255,255,.15); }
+    .list-empty { padding: 10px 16px; font-size: 13px; opacity: .55; }
+
+    /* Tag filter row */
+    .tag-filter {
+      display: flex; gap: 6px;
+      padding: 2px 10px 8px;
+      overflow-x: auto; flex-shrink: 0;
+      scrollbar-width: none;
+    }
+    .tag-filter::-webkit-scrollbar { display: none; }
+    .tf-chip {
+      font-size: 11px; white-space: nowrap;
+      padding: 4px 10px; border-radius: 999px;
+      background: rgba(255,255,255,.1); color: #fff;
+      border: none; cursor: pointer; transition: background .14s;
+    }
+    .tf-chip:hover { background: rgba(255,255,255,.2); }
+    .tf-chip.on    { background: rgba(255,255,255,.3); font-weight: 600; }
 
     .add-btn {
       margin: 8px 8px 10px;
@@ -229,6 +266,12 @@
     }
     #chat-title    { font-size: 15px; font-weight: 600; color: var(--g900); }
     #chat-subtitle { font-size: 12px; color: #aaa; }
+    .chat-meta  { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .cm-species { font-style: italic; color: #999; }
+    .cm-chip {
+      font-size: 10px; padding: 1px 7px; border-radius: 999px;
+      background: var(--g50); color: var(--g700); border: 1px solid var(--g200);
+    }
     .online-dot {
       width: 8px; height: 8px;
       border-radius: 50%; background: #69f0ae;
@@ -535,6 +578,7 @@
     </div>
 
     <div class="sb-section">My Gardens</div>
+    <div class="tag-filter" id="tag-filter" hidden></div>
     <div id="garden-list"></div>
     <button class="add-btn" onclick="openModal()">＋ Add Card</button>
     <button class="logout-btn" onclick="doLogout()">⬅ Sign out</button>
@@ -623,6 +667,7 @@ let cards      = [];      // care subjects for this user (from /api/cards, or lo
 let activeCard = null;    // the selected card object ({ id, name, kind, species, tags, ... })
 let pendingPhotos = [];
 let busy = false;
+let tagFilter = localStorage.getItem('cardTagFilter') || 'All';  // sidebar tag filter
 
 // ════════════════════════════
 //  Login / logout
@@ -685,31 +730,102 @@ async function loadCards() {
   renderList();
 }
 
+// Union of every card's tags (sorted), for the filter row.
+function allTags() {
+  const s = new Set();
+  cards.forEach(c => (c.tags || []).forEach(t => s.add(t)));
+  return [...s].sort();
+}
+
+// Tag filter chips: "All" + each tag. Hidden when no card has tags.
+function renderTagFilter() {
+  const row = document.getElementById('tag-filter');
+  const tags = allTags();
+  // The filter's tag may have vanished with its last card → fall back to All.
+  if (tagFilter !== 'All' && !tags.includes(tagFilter)) tagFilter = 'All';
+  if (!tags.length) { row.hidden = true; row.innerHTML = ''; return; }
+  row.hidden = false;
+  row.innerHTML = '';
+  ['All', ...tags].forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'tf-chip' + (tagFilter === t ? ' on' : '');
+    b.textContent = t === 'All' ? 'All' : `#${t}`;
+    b.addEventListener('click', () => setTagFilter(t));
+    row.appendChild(b);
+  });
+}
+
+function setTagFilter(t) {
+  tagFilter = t;
+  localStorage.setItem('cardTagFilter', t);
+  renderList();   // re-renders both the filter row and the list
+}
+
+// Thumbnail markup: the card's photo (served as <id>.jpg — uploads go through
+// toJpeg first) with an emoji fallback on load error, else the kind emoji.
+function cardThumb(c) {
+  if (c.photo_id) {
+    return `<img src="/photos/${encodeURIComponent(c.photo_id)}.jpg" alt=""`
+      + ` onerror="this.parentNode.textContent='${kindEmoji(c.kind)}'">`;
+  }
+  return kindEmoji(c.kind);
+}
+
+function cardTagChips(c) {
+  const tags = (c.tags || []).slice(0, 3);
+  if (!tags.length) return '';
+  return `<div class="gi-tags">${tags.map(t => `<span class="chip">#${esc(t)}</span>`).join('')}</div>`;
+}
+
 function renderList() {
+  renderTagFilter();
   const el = document.getElementById('garden-list');
   el.innerHTML = '';
   if (!cards.length) {
-    el.innerHTML = '<div style="padding:10px 16px;font-size:13px;opacity:.55">No cards yet.</div>';
+    el.innerHTML = '<div class="list-empty">No cards yet.</div>';
     return;
   }
-  cards.forEach(c => {
+  const visible = tagFilter === 'All'
+    ? cards
+    : cards.filter(c => (c.tags || []).includes(tagFilter));
+  if (!visible.length) {
+    el.innerHTML = `<div class="list-empty">No cards tagged #${esc(tagFilter)}.</div>`;
+    return;
+  }
+  visible.forEach(c => {
     const div = document.createElement('div');
     div.className = 'g-item' + (activeCard?.id === c.id ? ' active' : '');
-    div.innerHTML = `<span class="gi-emoji">${kindEmoji(c.kind)}</span>
-                     <span class="gi-label">${esc(c.name)}</span>
-                     <button class="gi-rm" title="Remove">✕</button>`;
+    div.innerHTML =
+      `<span class="gi-thumb">${cardThumb(c)}</span>
+       <div class="gi-body">
+         <div class="gi-name">${esc(c.name)}</div>
+         ${c.species ? `<div class="gi-sub">${esc(c.species)}</div>` : ''}
+         ${cardTagChips(c)}
+       </div>
+       <button class="gi-rm" title="Remove">✕</button>`;
     div.querySelector('.gi-rm').addEventListener('click', e => { e.stopPropagation(); removeCard(c.id); });
     div.addEventListener('click', () => selectCard(c));
     el.appendChild(div);
   });
 }
 
+// Card facts under the chat title: species + tag chips (falls back to "<user>'s <kind>").
+function renderCardMeta(card) {
+  const sub = document.getElementById('chat-subtitle');
+  const species = card.species ? `<span class="cm-species">${esc(card.species)}</span>` : '';
+  const chips = (card.tags || []).slice(0, 4)
+    .map(t => `<span class="cm-chip">#${esc(t)}</span>`).join('');
+  sub.innerHTML = (species || chips)
+    ? `<span class="chat-meta">${species}${chips}</span>`
+    : `${esc(user.username)}'s ${esc(card.kind)}`;
+}
+
 function selectCard(c) {
   if (activeCard?.id === c.id) return;   // re-clicking the active card is a no-op
   activeCard = c;
   renderList();
-  document.getElementById('chat-title').textContent    = c.name;
-  document.getElementById('chat-subtitle').textContent = c.species || `${user.username}'s ${c.kind}`;
+  document.getElementById('chat-title').textContent = c.name;
+  renderCardMeta(c);
   document.getElementById('input').placeholder = `Ask about ${c.name}…`;
   closeSidebar();
 
