@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import uuid
@@ -213,6 +214,9 @@ async def chat(req: ChatRequest):
     suffix = "\n[Photo attached — please analyse the plant in the image.]" if image_loaded else ""
     parts.append(Part(text=full_message + suffix))
 
+    def _ndjson(obj: dict) -> str:
+        return json.dumps(obj, ensure_ascii=False) + "\n"
+
     async def generate():
         try:
             async for event in runner.run_async(
@@ -220,14 +224,31 @@ async def chat(req: ChatRequest):
                 session_id=req.session_id,
                 new_message=Content(role="user", parts=parts),
             ):
+                # Surface each tool call as a status line so the UI can show
+                # live activity (incl. which MongoDB MCP collection is hit).
+                get_calls = getattr(event, "get_function_calls", None)
+                if get_calls:
+                    for call in get_calls() or []:
+                        name = getattr(call, "name", "") or ""
+                        args = getattr(call, "args", None) or {}
+                        detail = ""
+                        if isinstance(args, dict):
+                            detail = str(
+                                args.get("collection")
+                                or args.get("location")
+                                or args.get("city")
+                                or args.get("plant_name")
+                                or ""
+                            )
+                        yield _ndjson({"type": "status", "tool": name, "detail": detail})
                 if event.is_final_response() and event.content:
                     for part in event.content.parts:
                         if part.text:
-                            yield part.text
+                            yield _ndjson({"type": "text", "delta": part.text})
         except Exception as e:
-            yield f"\n\n[Error: {e}]"
+            yield _ndjson({"type": "error", "message": str(e)})
 
-    return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 
 # ════════════════════════════════
