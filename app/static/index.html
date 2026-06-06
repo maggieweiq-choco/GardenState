@@ -425,6 +425,17 @@
     }
     #loc-chip button:hover { color: var(--g500); background: var(--g50); }
 
+    /* Refresh-care-plan button (chat header) */
+    .refresh-btn {
+      margin-left: 10px;
+      background: var(--g50); color: var(--g700);
+      border: 1px solid var(--g200); border-radius: 999px;
+      font-size: 12px; padding: 5px 12px; cursor: pointer;
+      white-space: nowrap; transition: all .14s;
+    }
+    .refresh-btn:hover    { background: var(--g200); border-color: var(--g500); }
+    .refresh-btn:disabled { opacity: .5; cursor: default; }
+
     /* Input bar */
     footer {
       height: var(--footer-h);
@@ -523,6 +534,28 @@
     }
     .card-form input:focus, .card-form select:focus { outline: none; border-color: var(--g500); }
 
+    .card-photo-btn {
+      width: 100%; padding: 12px;
+      border: 1.5px dashed var(--g200); border-radius: 10px;
+      background: var(--g50); color: var(--g700);
+      font-size: 13px; cursor: pointer; transition: all .14s;
+    }
+    .card-photo-btn:hover { border-color: var(--g500); background: var(--g200); }
+    .card-photo-info {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: 8px; font-size: 12px; color: #777;
+    }
+    .card-photo-info img {
+      width: 46px; height: 46px; object-fit: cover;
+      border-radius: 8px; border: 2px solid var(--g500); flex-shrink: 0;
+    }
+    .card-photo-info .cp-status { flex: 1; min-width: 0; }
+    .cp-clear {
+      background: none; border: none; color: #bbb; cursor: pointer;
+      font-size: 14px; padding: 2px 6px;
+    }
+    .cp-clear:hover { color: #e53935; }
+
     .modal-row { display: flex; gap: 10px; }
     .modal-row button { flex: 1; padding: 11px; border-radius: 10px; border: none; font-size: 14px; cursor: pointer; }
     .btn-cancel { background: #f4f4f4; color: #777; }
@@ -596,6 +629,8 @@
         📍 <span id="loc-chip-text"></span>
         <button onclick="changeLocation()" title="Change location">✎</button>
       </div>
+      <button id="refresh-plan-btn" class="refresh-btn" hidden onclick="refreshPlan()"
+              title="Regenerate this card's care plan">↻ Refresh care plan</button>
       <div class="online-dot"></div>
     </div>
 
@@ -633,6 +668,18 @@
     <h3>Add a Card</h3>
     <p>A card is anything you care for — one plant, a bed, a lawn, or the whole garden.</p>
     <div class="card-form">
+      <div class="card-photo">
+        <button type="button" class="card-photo-btn" id="card-photo-btn" onclick="pickCardPhoto()">
+          📷 Add a photo to identify
+        </button>
+        <input type="file" id="card-file" accept="image/*" capture="environment" hidden
+               onchange="onCardPhotoPicked()">
+        <div class="card-photo-info" id="card-photo-info" hidden>
+          <img id="card-photo-thumb" alt="">
+          <span class="cp-status" id="card-photo-status"></span>
+          <button type="button" class="cp-clear" onclick="clearCardPhoto()" title="Remove photo">✕</button>
+        </div>
+      </div>
       <input id="card-name" type="text" placeholder="Name (e.g. Front-yard narcissus)"
              oninput="updateAddBtn()" onkeydown="if(event.key==='Enter') confirmAdd()">
       <select id="card-kind">
@@ -642,6 +689,7 @@
         <option value="indoor">🪴 Indoor</option>
         <option value="garden">🏡 Whole garden</option>
       </select>
+      <input id="card-species" type="text" placeholder="Species (optional)">
       <input id="card-tags" type="text" placeholder="Tags, comma-separated (optional)">
     </div>
     <div class="modal-row">
@@ -833,6 +881,7 @@ function selectCard(c) {
     showLocationSetup(c);
   } else {
     updateLocChip(user.location);
+    showRefreshBtn(true);
     loadHistoryOrPlan(c);
   }
 }
@@ -861,6 +910,7 @@ async function loadHistoryOrPlan(card) {
 
 function showLocationSetup(card) {
   document.getElementById('loc-chip').hidden = true;
+  showRefreshBtn(false);
   document.getElementById('messages').innerHTML = `
     <div class="loc-card">
       <div class="lc-icon">${kindEmoji(card.kind)}</div>
@@ -940,6 +990,7 @@ async function submitLocation() {
   }
   user.location = val;
   updateLocChip(val);
+  showRefreshBtn(true);
   loadHistoryOrPlan(activeCard);
 }
 
@@ -996,6 +1047,21 @@ async function generateCardPlan(card) {
   }
 }
 
+// Show/hide the header "↻ Refresh care plan" button (only meaningful for an
+// active, located card — the plan otherwise generates once, on first open).
+function showRefreshBtn(show) {
+  document.getElementById('refresh-plan-btn').hidden = !show;
+}
+
+// Deliberate, on-demand regeneration of the active card's care plan.
+async function refreshPlan() {
+  if (!activeCard || !user.location || busy) return;
+  const btn = document.getElementById('refresh-plan-btn');
+  btn.disabled = true;
+  try { await generateCardPlan(activeCard); }
+  finally { btn.disabled = false; }
+}
+
 async function removeCard(id) {
   if (!confirm('Remove this card?')) return;
   if (!user.isGuest && user.email) {
@@ -1012,6 +1078,7 @@ async function removeCard(id) {
   cards = cards.filter(c => c.id !== id);
   if (activeCard?.id === id) {
     activeCard = null;
+    showRefreshBtn(false);
     document.getElementById('chat-title').textContent    = 'Garden Assistant';
     document.getElementById('chat-subtitle').textContent = 'Select a card to start';
     document.getElementById('messages').innerHTML = `
@@ -1030,10 +1097,81 @@ async function removeCard(id) {
 function openModal() {
   document.getElementById('card-name').value = '';
   document.getElementById('card-kind').value = 'plant';
+  document.getElementById('card-species').value = '';
   document.getElementById('card-tags').value = '';
+  clearCardPhoto();
   updateAddBtn();
   document.getElementById('modal-overlay').hidden = false;
   setTimeout(() => document.getElementById('card-name')?.focus(), 50);
+}
+
+// ── Add-card photo → identify ──
+let pendingCardPhotoId = '';   // photo_id to attach to the next created card
+
+function pickCardPhoto() { document.getElementById('card-file').click(); }
+
+function clearCardPhoto() {
+  pendingCardPhotoId = '';
+  const info = document.getElementById('card-photo-info');
+  if (info) info.hidden = true;
+  const thumb = document.getElementById('card-photo-thumb');
+  if (thumb) thumb.src = '';
+  const btn = document.getElementById('card-photo-btn');
+  if (btn) btn.hidden = false;
+}
+
+// Upload the picked photo (JPEG) then ask /api/identify to prefill the form.
+// The photo is attached to the card even if identify fails — manual entry still works.
+async function onCardPhotoPicked() {
+  const fileEl = document.getElementById('card-file');
+  const file = fileEl.files[0];
+  fileEl.value = '';
+  if (!file) return;
+
+  document.getElementById('card-photo-btn').hidden = true;
+  document.getElementById('card-photo-info').hidden = false;
+  document.getElementById('card-photo-thumb').src = await toDataURL(file);
+  const status = document.getElementById('card-photo-status');
+  status.textContent = '📤 Uploading…';
+  pendingCardPhotoId = '';
+
+  try {
+    const jpeg = await toJpeg(file);
+    const fd = new FormData(); fd.append('file', jpeg);
+    const up = await fetch('/upload', { method: 'POST', body: fd });
+    if (!up.ok) throw new Error(`HTTP ${up.status}`);
+    pendingCardPhotoId = (await up.json()).photo_id;   // attach even if identify fails
+
+    status.textContent = '🔍 Identifying…';
+    const r = await fetch('/api/identify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_id: pendingCardPhotoId }),
+    });
+    const data = r.ok ? await r.json() : {};
+    if (data && !data.error) {
+      prefillFromIdentify(data);
+      status.textContent = '✓ Identified — edit anything below';
+    } else {
+      status.textContent = '📷 Photo attached — fill in the details';
+    }
+  } catch {
+    status.textContent = pendingCardPhotoId
+      ? '📷 Photo attached — fill in the details'
+      : '⚠️ Upload failed — add details manually';
+  }
+}
+
+// Prefill the form from an /api/identify result. Everything stays editable;
+// a name the user already typed is preserved.
+function prefillFromIdentify(d) {
+  const nameEl = document.getElementById('card-name');
+  if (d.name && !nameEl.value.trim()) nameEl.value = d.name;
+  if (d.species) document.getElementById('card-species').value = d.species;
+  if (d.kind)    document.getElementById('card-kind').value = d.kind;
+  if (Array.isArray(d.tags) && d.tags.length)
+    document.getElementById('card-tags').value = d.tags.join(', ');
+  updateAddBtn();
 }
 
 function updateAddBtn() {
@@ -1048,9 +1186,11 @@ function closeModal() {
 async function confirmAdd() {
   const name = document.getElementById('card-name').value.trim();
   if (!name) return;
-  const kind = document.getElementById('card-kind').value;
-  const tags = document.getElementById('card-tags').value
+  const kind     = document.getElementById('card-kind').value;
+  const species  = document.getElementById('card-species').value.trim();
+  const tags     = document.getElementById('card-tags').value
     .split(',').map(s => s.trim()).filter(Boolean);
+  const photo_id = pendingCardPhotoId;
 
   let card;
   if (!user.isGuest && user.email) {
@@ -1058,7 +1198,7 @@ async function confirmAdd() {
       const r = await fetch('/api/cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.email, name, kind, tags }),
+        body: JSON.stringify({ user_id: user.email, name, kind, tags, species, photo_id }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const created = await r.json();
@@ -1069,7 +1209,7 @@ async function confirmAdd() {
     }
   } else {
     // Guest: in-memory only (data not saved).
-    card = { id: crypto.randomUUID(), name, kind, tags, species: '' };
+    card = { id: crypto.randomUUID(), name, kind, tags, species, photo_id };
   }
   cards.push(card);
   closeModal();
