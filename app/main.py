@@ -20,10 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from garden_agent.agent import root_agent
-from garden_agent.tools import load_memories
+from garden_agent.tools import load_memories, _get_genai
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from google.genai.types import Content, Part, Blob
+from google.genai.types import Content, Part, Blob, GenerateContentConfig
 
 app = FastAPI()
 app.add_middleware(
@@ -91,6 +91,9 @@ class CardRequest(BaseModel):
     tags: list[str] = []
     species: str = ""
     photo_id: str = ""
+
+class IdentifyRequest(BaseModel):
+    photo_id: str           # photo_id returned by /upload
 
 _MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
              ".gif": "image/gif", ".webp": "image/webp",
@@ -260,6 +263,56 @@ def delete_card(card_id: str, user_id: str = Query(...)):
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Card not found")
     return {"deleted": card_id}
+
+
+_IDENTIFY_INSTRUCTION = (
+    "You are a horticulture expert. Identify the single main plant or garden subject "
+    "shown in this photo for a garden-care app. Respond with JSON only — no prose, no "
+    "markdown fences — using exactly these keys:\n"
+    '{ "name": short friendly label a gardener would use (e.g. "Front-yard narcissus"),\n'
+    '  "species": botanical/Latin name, or "" if unsure,\n'
+    '  "kind": one of "plant" | "bed" | "lawn" | "indoor" | "garden" — pick by what the '
+    "photo mostly shows (a single specimen = plant, a planted area = bed, turf = lawn, a "
+    "potted houseplant = indoor, a whole yard = garden),\n"
+    '  "tags": 1-4 lowercase facet tags such as "flower","tree","shrub","indoor","lawn",'
+    '"vegetable","herb","succulent",\n'
+    '  "confidence": number between 0 and 1 }'
+)
+
+
+@app.post("/api/identify")
+def identify(req: IdentifyRequest):
+    """Photo → suggested card fields via Gemini vision. The UI prefills these
+    (all editable) and falls back to manual entry on any failure, so every error
+    returns HTTP 200 with an `{"error": ...}` body rather than raising."""
+    candidates = list(UPLOADS_DIR.glob(f"{req.photo_id}.*"))
+    if not candidates:
+        return {"error": "photo not found"}
+    img_path = candidates[0]
+    mime = _MIME_MAP.get(img_path.suffix.lower(), "image/jpeg")
+    try:
+        resp = _get_genai().models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[
+                Part(inline_data=Blob(mime_type=mime, data=img_path.read_bytes())),
+                Part(text=_IDENTIFY_INSTRUCTION),
+            ],
+            config=GenerateContentConfig(response_mime_type="application/json"),
+        )
+        data = json.loads(resp.text)
+    except Exception as e:
+        return {"error": str(e)}
+
+    # Light normalisation — the model is told the schema, but keep the UI safe.
+    kind = str(data.get("kind", "")).lower()
+    tags = data.get("tags") or []
+    return {
+        "name": str(data.get("name", "")).strip(),
+        "species": str(data.get("species", "")).strip(),
+        "kind": kind if kind in CARD_KINDS else "plant",
+        "tags": [str(t).strip().lower() for t in tags if str(t).strip()][:4],
+        "confidence": data.get("confidence", 0),
+    }
 
 
 # ════════════════════════════════
