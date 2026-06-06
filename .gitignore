@@ -5,3 +5,5 @@ garden_agent/.env
 app/uploads/
 .DS_Store
 garden_agent/.adk/
+CLAUDE.md
+handoffs/
