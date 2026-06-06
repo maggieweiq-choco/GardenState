@@ -118,6 +118,14 @@ async def get_weather(location: str) -> dict:
             )
             geo.raise_for_status()
             results = geo.json().get("results")
+            # Fallback: if "City, State" format not found, retry with just the city name
+            if not results and "," in location:
+                city_only = location.split(",")[0].strip()
+                geo2 = await client.get(
+                    "https://geocoding-api.open-meteo.com/v1/search",
+                    params={"name": city_only, "count": 1, "language": "en", "format": "json"},
+                )
+                results = geo2.json().get("results")
             if not results:
                 return {"error": f"Location '{location}' not found"}
 

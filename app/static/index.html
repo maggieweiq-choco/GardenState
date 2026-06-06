@@ -337,6 +337,23 @@
     .loc-input-row button:hover    { background: var(--g700); }
     .loc-input-row button:disabled { background: #ccc; cursor: default; }
 
+    .loc-gps-btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; margin-bottom: 12px;
+      background: var(--g50); border: 1.5px solid var(--g200); border-radius: 10px;
+      padding: 10px 14px; font-size: 13px; color: var(--g700); font-weight: 500;
+      cursor: pointer; transition: all .14s;
+    }
+    .loc-gps-btn:hover    { background: var(--g200); border-color: var(--g500); }
+    .loc-gps-btn:disabled { background: #f5f5f5; color: #aaa; cursor: default; border-color: #e0e0e0; }
+    .loc-divider {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: #ccc; margin-bottom: 12px;
+    }
+    .loc-divider::before, .loc-divider::after {
+      content: ""; flex: 1; height: 1px; background: #eee;
+    }
+
     /* Location chip in header */
     #loc-chip {
       display: flex; align-items: center; gap: 5px;
@@ -668,6 +685,10 @@ function showLocationSetup(t) {
       <h3>Where is your garden?</h3>
       <p>Enter your city, state, or ZIP code so I can check local weather
          and create a personalised care plan for your ${t.label.toLowerCase()}.</p>
+      <button class="loc-gps-btn" id="loc-gps-btn" onclick="useMyLocation()">
+        📍 Use my current location
+      </button>
+      <div class="loc-divider">or enter manually</div>
       <div class="loc-input-row">
         <input id="loc-input" type="text" placeholder="e.g. Boston MA, or 94102"
                onkeydown="if(event.key==='Enter') submitLocation()">
@@ -675,6 +696,41 @@ function showLocationSetup(t) {
       </div>
     </div>`;
   setTimeout(() => document.getElementById('loc-input')?.focus(), 50);
+}
+
+async function useMyLocation() {
+  if (!navigator.geolocation) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+  const btn = document.getElementById('loc-gps-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Detecting location…';
+
+  navigator.geolocation.getCurrentPosition(
+    async ({ coords }) => {
+      try {
+        const r = await fetch(`/api/geocode?lat=${coords.latitude}&lng=${coords.longitude}`);
+        if (!r.ok) throw new Error(await r.text());
+        const { location } = await r.json();
+        document.getElementById('loc-input').value = location;
+        btn.textContent = `📍 ${location}`;
+        // Auto-submit
+        submitLocation();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '📍 Use my current location';
+        alert('Could not resolve location: ' + e.message);
+      }
+    },
+    (err) => {
+      btn.disabled = false;
+      btn.textContent = '📍 Use my current location';
+      if (err.code === 1) alert('Location permission denied. Please allow location access and try again.');
+      else alert('Could not get your location. Please enter it manually.');
+    },
+    { timeout: 10000 }
+  );
 }
 
 async function submitLocation() {
@@ -729,6 +785,7 @@ async function generateInstructions(t) {
       body: JSON.stringify({
         message: prompt,
         session_id: getSessionId(),
+        user_id: user.email || '',
         garden_type: t.label,
         username: user.username,
         location: user.location,
@@ -886,6 +943,26 @@ function toDataURL(f) {
   return new Promise(r => { const rd = new FileReader(); rd.onload = e => r(e.target.result); rd.readAsDataURL(f); });
 }
 
+// Convert any image (including HEIC) to JPEG via canvas before uploading
+function toJpeg(file) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.toBlob(blob => {
+        URL.revokeObjectURL(url);
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', 0.92);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); }; // fallback: upload as-is
+    img.src = url;
+  });
+}
+
 function renderPreviews() {
   previewStrip.innerHTML = '';
   pendingPhotos.forEach((p, i) => {
@@ -945,11 +1022,16 @@ async function send() {
 
   busy = true; sendBtn.disabled = true;
 
-  // Upload photos
-  const uploaded = [];
+  // Upload photos (convert to JPEG first for Gemini compatibility)
+  const uploaded = [];  // { photo_id, url }
   for (const p of pendingPhotos) {
-    const fd = new FormData(); fd.append('file', p.file);
-    try { const r = await fetch('/upload',{method:'POST',body:fd}); uploaded.push((await r.json()).url); } catch {}
+    const jpegFile = await toJpeg(p.file);
+    const fd = new FormData(); fd.append('file', jpegFile);
+    try {
+      const r = await fetch('/upload', { method: 'POST', body: fd });
+      const data = await r.json();
+      uploaded.push({ photo_id: data.photo_id, url: data.url });
+    } catch {}
   }
   const localUrls = pendingPhotos.map(p => p.url);
   pendingPhotos = []; renderPreviews();
@@ -957,10 +1039,9 @@ async function send() {
   addMsg('user', text || '📷 Photo', localUrls);
   inputEl.value = ''; inputEl.style.height = 'auto';
 
-  let msg = text;
-  if (uploaded.length)
-    msg += (text ? '\n\n' : '') +
-      `[User uploaded ${uploaded.length} photo(s): ${uploaded.join(', ')}. Analyse the garden and advise.]`;
+  // Use first uploaded photo_id for multimodal (Gemini vision)
+  const firstPhotoId = uploaded.length ? uploaded[0].photo_id : '';
+  const msg = text || 'Please analyse this photo of my garden and advise.';
 
   const typing = addTyping();
   try {
@@ -970,6 +1051,8 @@ async function send() {
       body: JSON.stringify({
         message: msg,
         session_id: getSessionId(),
+        user_id: user.email || '',
+        photo_id: firstPhotoId,
         garden_type: activeGarden.label,
         username: user.username,
         location: user.location || '',

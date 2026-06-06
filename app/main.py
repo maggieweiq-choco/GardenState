@@ -6,12 +6,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / "garden_agent" / ".env", override=False)
+load_dotenv(Path(__file__).parent.parent / "garden_agent" / ".env", override=True)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import httpx
 import pymongo
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,7 +63,8 @@ class LocationRequest(BaseModel):
     location: str
 
 _MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-             ".gif": "image/gif", ".webp": "image/webp"}
+             ".gif": "image/gif", ".webp": "image/webp",
+             ".heic": "image/heic", ".heif": "image/heif"}
 
 
 class ChatRequest(BaseModel):
@@ -114,6 +116,48 @@ def add_garden(req: GardenRequest):
 def update_location(req: LocationRequest):
     users_col.update_one({"email": req.email}, {"$set": {"location": req.location}})
     return {"location": req.location}
+
+
+@app.get("/api/geocode")
+async def geocode(lat: float = Query(...), lng: float = Query(...)):
+    """Reverse-geocode coordinates to a city name.
+    Uses Google Maps Geocoding API if GOOGLE_MAPS_API_KEY is set,
+    otherwise falls back to Nominatim (OpenStreetMap, free).
+    """
+    maps_key = os.getenv("GOOGLE_MAPS_API_KEY", "")
+    async with httpx.AsyncClient(timeout=8) as client:
+        if maps_key:
+            r = await client.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={"latlng": f"{lat},{lng}", "key": maps_key,
+                        "result_type": "locality|administrative_area_level_1"},
+            )
+            data = r.json()
+            if data.get("status") != "OK":
+                raise HTTPException(400, f"Google Maps error: {data.get('status')}")
+            components = {}
+            for comp in data["results"][0]["address_components"]:
+                if comp["types"]:
+                    components[comp["types"][0]] = comp["long_name"]
+            city  = components.get("locality") or components.get("sublocality") or components.get("administrative_area_level_2", "")
+            state = components.get("administrative_area_level_1", "")
+            location = f"{city}, {state}".strip(", ") if city else state
+        else:
+            # Free fallback: Nominatim
+            r = await client.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params={"lat": lat, "lon": lng, "format": "json"},
+                headers={"User-Agent": "GardenState/1.0"},
+            )
+            data = r.json()
+            addr = data.get("address", {})
+            city  = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("county", "")
+            state = addr.get("state", "")
+            location = f"{city}, {state}".strip(", ") if city else state
+
+    if not location:
+        raise HTTPException(400, "Could not determine location from coordinates")
+    return {"location": location}
 
 
 @app.delete("/api/gardens")
