@@ -295,6 +295,20 @@
       40%          { transform: translateY(-7px); }
     }
 
+    .activity-status { font-size: 12.5px; color: #7a8a82; margin-top: 5px; }
+    .activity-status:empty { display: none; margin-top: 0; }
+    .activity-status code {
+      background: var(--g200); color: #2f5d4a;
+      padding: 1px 5px; border-radius: 5px; font-size: 11.5px;
+    }
+
+    .note {
+      align-self: center; max-width: 90%;
+      font-size: 12.5px; color: #9a6a00;
+      background: #fff7e6; border: 1px solid #ffe1a6;
+      padding: 6px 12px; border-radius: 999px; margin: 2px 0;
+    }
+
     .welcome {
       text-align: center; color: #bbb;
       padding: 60px 20px;
@@ -777,35 +791,29 @@ async function generateInstructions(t) {
     `**Watch Out For** – pests, diseases, or weather risks to monitor\n` +
     `Keep advice practical and specific to ${t.label.toLowerCase()}.`;
 
-  const typing = addTyping();
+  const activity = addTyping();
+  let sp = null;
+  const ensureBubble = () => {
+    if (!sp) { activity.remove(); sp = addMsg('agent', '').querySelector('.text'); }
+    return sp;
+  };
   try {
-    const res = await fetch('/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: prompt,
-        session_id: getSessionId(),
-        user_id: user.email || '',
-        garden_type: t.label,
-        username: user.username,
-        location: user.location,
-      }),
+    await streamChat({
+      message: prompt,
+      session_id: getSessionId(),
+      user_id: user.email || '',
+      garden_type: t.label,
+      username: user.username,
+      location: user.location,
+    }, {
+      onStatus: ({ tool, detail }) => activity.setStatus(toolLabel(tool, detail)),
+      onText: (delta) => { ensureBubble().textContent += delta; document.getElementById('messages').scrollTop = 9999; },
+      onError: (message) => { ensureBubble().textContent += `\n\n[Error: ${message}]`; },
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    typing.remove();
-    const agentEl = addMsg('agent', '');
-    const sp = agentEl.querySelector('.text');
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      sp.textContent += dec.decode(value, { stream: true });
-      document.getElementById('messages').scrollTop = 9999;
-    }
   } catch (e) {
-    typing.remove();
-    addMsg('agent', `Could not generate instructions: ${e.message}`);
+    if (!sp) addMsg('agent', `Could not generate instructions: ${e.message}`);
+  } finally {
+    if (activity.isConnected) activity.remove();
   }
 }
 
@@ -1008,10 +1016,87 @@ function addTyping() {
   const msgs = document.getElementById('messages');
   const w = document.createElement('div');
   w.className = 'msg agent';
-  w.innerHTML = '<div class="avatar">🌿</div><div class="bubble"><div class="dots"><span></span><span></span><span></span></div></div>';
+  w.innerHTML = '<div class="avatar">🌿</div><div class="bubble">'
+    + '<div class="dots"><span></span><span></span><span></span></div>'
+    + '<div class="activity-status"></div></div>';
+  const statusEl = w.querySelector('.activity-status');
+  // status may contain markup (e.g. a <code> tag) — caller supplies safe HTML.
+  w.setStatus = (html) => { statusEl.innerHTML = html; msgs.scrollTop = msgs.scrollHeight; };
   msgs.appendChild(w);
   msgs.scrollTop = msgs.scrollHeight;
   return w;
+}
+
+// A small, centered inline note (e.g. an upload warning) — never silent.
+function addNote(text) {
+  const msgs = document.getElementById('messages');
+  const n = document.createElement('div');
+  n.className = 'note';
+  n.textContent = text;
+  msgs.appendChild(n);
+  msgs.scrollTop = msgs.scrollHeight;
+  return n;
+}
+
+// Map a tool name (+ optional detail) to a friendly activity label.
+// Returns an HTML string (tool/detail are escaped where interpolated).
+const TOOL_LABELS = {
+  get_weather:            '🌦 Checking the weather…',
+  read_sensors:           '📡 Reading garden sensors…',
+  get_plant_care:         '🌱 Looking up plant-care info…',
+  search_care_knowledge:  '📚 Searching care knowledge…',
+  save_memory:            '📝 Saving a note…',
+};
+const MCP_TOOLS = new Set([
+  'find', 'aggregate', 'count', 'insert-many', 'insert-one',
+  'update-many', 'update-one', 'delete-many', 'delete-one',
+  'list-collections', 'list-databases', 'collection-schema',
+]);
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function toolLabel(tool, detail) {
+  if (TOOL_LABELS[tool]) return TOOL_LABELS[tool];
+  if (MCP_TOOLS.has(tool)) {
+    const on = detail ? ` on <code>${esc(detail)}</code>` : '';
+    return `🗄 MongoDB: <code>${esc(tool)}</code>${on}…`;
+  }
+  return `⚙️ <code>${esc(tool || 'tool')}</code>…`;
+}
+
+// Shared NDJSON stream reader for /chat. Buffers chunks, splits on "\n",
+// JSON-parses complete lines (partial tail stays buffered), dispatches by type.
+async function streamChat(body, { onStatus, onText, onError } = {}) {
+  const res = await fetch('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  const handle = (line) => {
+    const s = line.trim();
+    if (!s) return;
+    let ev;
+    try { ev = JSON.parse(s); } catch { return; }  // ignore malformed line
+    if (ev.type === 'status')      onStatus && onStatus(ev);
+    else if (ev.type === 'text')   onText && onText(ev.delta || '');
+    else if (ev.type === 'error')  onError && onError(ev.message || 'unknown error');
+  };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      handle(buf.slice(0, nl));
+      buf = buf.slice(nl + 1);
+    }
+  }
+  if (buf.trim()) handle(buf);  // flush any trailing line without newline
 }
 
 async function send() {
@@ -1022,58 +1107,60 @@ async function send() {
 
   busy = true; sendBtn.disabled = true;
 
-  // Upload photos (convert to JPEG first for Gemini compatibility)
-  const uploaded = [];  // { photo_id, url }
-  for (const p of pendingPhotos) {
-    const jpegFile = await toJpeg(p.file);
-    const fd = new FormData(); fd.append('file', jpegFile);
-    try {
-      const r = await fetch('/upload', { method: 'POST', body: fd });
-      const data = await r.json();
-      uploaded.push({ photo_id: data.photo_id, url: data.url });
-    } catch {}
-  }
-  const localUrls = pendingPhotos.map(p => p.url);
+  // Snapshot the pending photos, then show the user's message right away.
+  const photos = pendingPhotos;
+  const localUrls = photos.map(p => p.url);
   pendingPhotos = []; renderPreviews();
-
   addMsg('user', text || '📷 Photo', localUrls);
   inputEl.value = ''; inputEl.style.height = 'auto';
+
+  const activity = addTyping();
+
+  // Upload photos (convert to JPEG first for Gemini compatibility), with progress.
+  const uploaded = [];  // { photo_id, url }
+  let uploadFailed = false;
+  for (let i = 0; i < photos.length; i++) {
+    activity.setStatus(`📤 Uploading photo ${i + 1}/${photos.length}…`);
+    try {
+      const jpegFile = await toJpeg(photos[i].file);
+      const fd = new FormData(); fd.append('file', jpegFile);
+      const r = await fetch('/upload', { method: 'POST', body: fd });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      uploaded.push({ photo_id: data.photo_id, url: data.url });
+    } catch {
+      uploadFailed = true;
+    }
+  }
+  if (uploadFailed) addNote('Photo upload failed — sending without photo');
 
   // Use first uploaded photo_id for multimodal (Gemini vision)
   const firstPhotoId = uploaded.length ? uploaded[0].photo_id : '';
   const msg = text || 'Please analyse this photo of my garden and advise.';
 
-  const typing = addTyping();
+  let sp = null;
+  const ensureBubble = () => {
+    if (!sp) { activity.remove(); sp = addMsg('agent', '').querySelector('.text'); }
+    return sp;
+  };
   try {
-    const res = await fetch('/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: msg,
-        session_id: getSessionId(),
-        user_id: user.email || '',
-        photo_id: firstPhotoId,
-        garden_type: activeGarden.label,
-        username: user.username,
-        location: user.location || '',
-      }),
+    await streamChat({
+      message: msg,
+      session_id: getSessionId(),
+      user_id: user.email || '',
+      photo_id: firstPhotoId,
+      garden_type: activeGarden.label,
+      username: user.username,
+      location: user.location || '',
+    }, {
+      onStatus: ({ tool, detail }) => activity.setStatus(toolLabel(tool, detail)),
+      onText: (delta) => { ensureBubble().textContent += delta; document.getElementById('messages').scrollTop = 9999; },
+      onError: (message) => { ensureBubble().textContent += `\n\n[Error: ${message}]`; },
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    typing.remove();
-    const agentEl = addMsg('agent', '');
-    const sp = agentEl.querySelector('.text');
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      sp.textContent += dec.decode(value, { stream: true });
-      document.getElementById('messages').scrollTop = 9999;
-    }
   } catch (e) {
-    typing.remove();
-    addMsg('agent', `Sorry, something went wrong: ${e.message}`);
+    if (!sp) addMsg('agent', `Sorry, something went wrong: ${e.message}`);
   } finally {
+    if (activity.isConnected) activity.remove();
     busy = false; sendBtn.disabled = false; inputEl.focus();
   }
 }
