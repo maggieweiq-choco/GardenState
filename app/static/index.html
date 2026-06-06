@@ -750,15 +750,24 @@ async function useMyLocation() {
 async function submitLocation() {
   const val = document.getElementById('loc-input')?.value.trim();
   if (!val) return;
-  document.getElementById('loc-submit-btn').disabled = true;
-  document.getElementById('loc-submit-btn').textContent = '…';
+  const submitBtn = document.getElementById('loc-submit-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = '…';
 
   if (!user.isGuest) {
-    await fetch('/api/user/location', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, location: val }),
-    });
+    try {
+      const r = await fetch('/api/user/location', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, location: val }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch (e) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Get My Plan →';
+      alert('Could not save your location: ' + e.message);
+      return;
+    }
     localStorage.setItem('guser', JSON.stringify({ ...user, location: val }));
   }
   user.location = val;
@@ -820,12 +829,18 @@ async function generateInstructions(t) {
 async function removeGarden(id) {
   if (!confirm('Remove this garden?')) return;
   if (!user.isGuest) {
-    const r = await fetch('/api/gardens', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email, garden_type: id }),
-    });
-    user.gardens = (await r.json()).gardens;
+    try {
+      const r = await fetch('/api/gardens', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, garden_type: id }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      user.gardens = (await r.json()).gardens;
+    } catch (e) {
+      alert('Could not remove garden: ' + e.message);
+      return;
+    }
   } else {
     user.gardens = user.gardens.filter(g => g !== id);
   }
@@ -891,13 +906,19 @@ async function confirmAdd() {
   if (!pickedTypes.size) return;
   if (!user.isGuest) {
     let lastGardens = user.gardens;
-    for (const id of pickedTypes) {
-      const r = await fetch('/api/gardens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, garden_type: id }),
-      });
-      lastGardens = (await r.json()).gardens;
+    try {
+      for (const id of pickedTypes) {
+        const r = await fetch('/api/gardens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, garden_type: id }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        lastGardens = (await r.json()).gardens;
+      }
+    } catch (e) {
+      alert('Could not add garden: ' + e.message);
+      return;
     }
     user.gardens = lastGardens;
   } else {
