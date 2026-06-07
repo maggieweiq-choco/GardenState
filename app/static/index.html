@@ -347,6 +347,13 @@
       background: var(--g200); color: #2f5d4a;
       padding: 1px 5px; border-radius: 5px; font-size: 11.5px;
     }
+    /* Muted partner-integration badge — human copy leads, "MongoDB" stays visible
+       (judges score the integration) but quiet enough not to read as jargon. */
+    .db-badge {
+      font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+      background: rgba(0,0,0,.06); color: #777; vertical-align: middle;
+      font-family: ui-monospace, monospace; letter-spacing: .02em;
+    }
 
     .note {
       align-self: center; max-width: 90%;
@@ -1444,10 +1451,23 @@ const TOOL_LABELS = {
   forget_memory:          '🧹 Forgetting…',
 };
 const MCP_TOOLS = new Set([
-  'find', 'aggregate', 'count', 'insert-many', 'insert-one',
-  'update-many', 'update-one', 'delete-many', 'delete-one',
-  'list-collections', 'list-databases', 'collection-schema',
+  'find', 'aggregate', 'count', 'distinct',
+  'insert-many', 'insert-one', 'update-many', 'update-one', 'delete-many', 'delete-one',
+  'create-collection', 'create-index', 'rename-collection',
+  'list-collections', 'list-databases', 'collection-schema', 'collection-indexes',
 ]);
+// Human-first copy for MongoDB MCP ops, keyed by collection (the raw tool/collection
+// names never reach the bubble). "read" is the default; write = a tool name starting
+// with insert/update/delete/create/rename. A muted MongoDB badge keeps the (judge-
+// scored) integration visible without showing jargon.
+const MCP_COPY = {
+  plants:          { read: '🌱 Looking up your plant records…', write: '🌱 Updating your plant records…' },
+  sensor_readings: { read: '📡 Checking sensor history…',       write: '📡 Logging sensor readings…' },
+  tasks:           { read: '🗓 Checking your garden tasks…',     write: '🗓 Logging a garden task…' },
+  user_memories:   { read: '📝 Checking your notes…',            write: '📝 Updating your notes…' },
+};
+const MCP_GENERIC = { read: '💾 Checking your garden data…', write: '💾 Saving your garden data…' };
+const DB_BADGE = ' <span class="db-badge">MongoDB</span>';
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1455,8 +1475,9 @@ function esc(s) {
 function toolLabel(tool, detail) {
   if (TOOL_LABELS[tool]) return TOOL_LABELS[tool];
   if (MCP_TOOLS.has(tool)) {
-    const on = detail ? ` on <code>${esc(detail)}</code>` : '';
-    return `🗄 MongoDB: <code>${esc(tool)}</code>${on}…`;
+    const mode = /^(insert|update|delete|create|rename)/.test(tool) ? 'write' : 'read';
+    // `detail` (collection) is used only as a map key — never interpolated into HTML.
+    return (MCP_COPY[detail] || MCP_GENERIC)[mode] + DB_BADGE;
   }
   return `⚙️ <code>${esc(tool || 'tool')}</code>…`;
 }
