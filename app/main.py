@@ -106,6 +106,7 @@ class ChatRequest(BaseModel):
     user_id: str = ""   # stable per-user identifier (email); falls back to session_id for guests
     photo_id: str = ""  # optional: photo_id returned by /upload
     card_id: str = ""   # optional: the card (care subject) this turn is about
+    tag: str = ""       # optional: a tag-group thread spanning all cards with this tag
     garden_type: str = ""   # legacy, kept for back-compat
     username: str = ""
     location: str = ""
@@ -318,14 +319,14 @@ def identify(req: IdentifyRequest):
 # ════════════════════════════════
 #  Chat
 # ════════════════════════════════
-def _save_history(user_id: str, session_id: str, card_id: str, role: str, text: str):
-    """Append one message to the per-card transcript. Best-effort: a logging
-    failure must never break the chat stream."""
+def _save_history(user_id: str, session_id: str, card_id: str, role: str, text: str, tag: str = ""):
+    """Append one message to a thread transcript (per-card, or per tag-group when
+    `tag` is set). Best-effort: a logging failure must never break the chat stream."""
     if not text:
         return
     try:
         chat_history_col.insert_one({
-            "user_id": user_id, "session_id": session_id, "card_id": card_id,
+            "user_id": user_id, "session_id": session_id, "card_id": card_id, "tag": tag,
             "role": role, "text": text, "ts": datetime.utcnow().isoformat(),
         })
     except Exception:
@@ -359,6 +360,19 @@ async def chat(req: ChatRequest):
         card_part = f', card="{card.get("name", "")}" ({", ".join(attrs)})'
         loc = f", location={req.location}" if req.location else ""
         context = f"[Context: user_id={user_id}{user_part}{card_part}{loc}]\n"
+    elif req.tag:
+        # Tag-group thread: context spans every card the user has tagged `req.tag`.
+        group = list(cards_col.find({"user_id": user_id, "tags": req.tag}).limit(20))
+        descs = []
+        for c in group:
+            bits = [c.get("kind", "")] + ([c["species"]] if c.get("species") else [])
+            descs.append(f'{c.get("name", "")} ({", ".join(b for b in bits if b)})')
+        cards_str = "; ".join(descs) if descs else "(no cards yet)"
+        loc = f", location={req.location}" if req.location else ""
+        context = (
+            f'[Context: user_id={user_id}{user_part}, tag-group="{req.tag}", '
+            f'cards: {cards_str}{loc}]\n'
+        )
     else:
         # Legacy garden context (kept byte-identical for back-compat).
         loc = f" in {req.location}" if req.location else ""
@@ -389,7 +403,7 @@ async def chat(req: ChatRequest):
     # Persist the user turn before the run (the care-plan prompt sets save_user=False
     # so its engineered text isn't replayed as a user bubble).
     if req.save_user:
-        _save_history(user_id, req.session_id, req.card_id, "user", req.message)
+        _save_history(user_id, req.session_id, req.card_id, "user", req.message, req.tag)
 
     def _ndjson(obj: dict) -> str:
         return json.dumps(obj, ensure_ascii=False) + "\n"
@@ -428,7 +442,7 @@ async def chat(req: ChatRequest):
             yield _ndjson({"type": "error", "message": str(e)})
         finally:
             # Persist whatever the agent produced (also on error, with what accumulated).
-            _save_history(user_id, req.session_id, req.card_id, "agent", agent_text)
+            _save_history(user_id, req.session_id, req.card_id, "agent", agent_text, req.tag)
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
