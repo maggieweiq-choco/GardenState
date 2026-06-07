@@ -173,6 +173,9 @@
     }
     .g-item:hover           { background: rgba(255,255,255,.12); }
     .g-item.active          { background: rgba(255,255,255,.22); }
+    /* Tag-group pseudo-entry pinned above the cards when a tag filter is active. */
+    .g-item.group           { border: 1px dashed rgba(255,255,255,.28); margin-bottom: 4px; }
+    .g-item.group .gi-thumb { background: rgba(255,255,255,.10); }
     .g-item .gi-thumb {
       width: 34px; height: 34px; flex-shrink: 0;
       border-radius: 8px; overflow: hidden;
@@ -713,6 +716,7 @@ const kindEmoji = (k) => KIND_EMOJI[k] || "🌱";
 let user       = null;   // { email, username, location, isGuest? }
 let cards      = [];      // care subjects for this user (from /api/cards, or local for guests)
 let activeCard = null;    // the selected card object ({ id, name, kind, species, tags, ... })
+let activeTag  = null;    // when set, a tag-group thread is open (and activeCard is null)
 let pendingPhotos = [];
 let busy = false;
 let tagFilter = localStorage.getItem('cardTagFilter') || 'All';  // sidebar tag filter
@@ -738,7 +742,7 @@ async function doLogin() {
 
 function doLogout() {
   localStorage.removeItem('guser');
-  user = null; activeCard = null; cards = [];
+  user = null; activeCard = null; activeTag = null; cards = [];
   document.getElementById('login-screen').hidden = false;
   document.getElementById('app-screen').hidden   = true;
 }
@@ -833,11 +837,25 @@ function renderList() {
     el.innerHTML = '<div class="list-empty">No cards yet.</div>';
     return;
   }
+  // Pin a group-chat pseudo-entry above the cards when a specific tag filter is active.
+  if (tagFilter !== 'All') {
+    const n = cards.filter(c => (c.tags || []).includes(tagFilter)).length;
+    const g = document.createElement('div');
+    g.className = 'g-item group' + (activeTag === tagFilter ? ' active' : '');
+    g.innerHTML =
+      `<span class="gi-thumb">💬</span>
+       <div class="gi-body">
+         <div class="gi-name">All ${esc(tagFilter)}</div>
+         <div class="gi-sub">${n} card${n === 1 ? '' : 's'} · group chat</div>
+       </div>`;
+    g.addEventListener('click', () => selectTagThread(tagFilter));
+    el.appendChild(g);
+  }
   const visible = tagFilter === 'All'
     ? cards
     : cards.filter(c => (c.tags || []).includes(tagFilter));
   if (!visible.length) {
-    el.innerHTML = `<div class="list-empty">No cards tagged #${esc(tagFilter)}.</div>`;
+    el.insertAdjacentHTML('beforeend', `<div class="list-empty">No cards tagged #${esc(tagFilter)}.</div>`);
     return;
   }
   visible.forEach(c => {
@@ -871,6 +889,7 @@ function renderCardMeta(card) {
 function selectCard(c) {
   if (activeCard?.id === c.id) return;   // re-clicking the active card is a no-op
   activeCard = c;
+  activeTag = null;                      // leaving any open tag-group thread
   renderList();
   document.getElementById('chat-title').textContent = c.name;
   renderCardMeta(c);
@@ -882,13 +901,35 @@ function selectCard(c) {
   } else {
     updateLocChip(user.location);
     showRefreshBtn(true);
-    loadHistoryOrPlan(c);
+    loadHistoryOrPlan(() => generateCardPlan(c));
   }
 }
 
-// On open: replay the persisted transcript if any (no agent call), else
-// generate a first-time care plan.
-async function loadHistoryOrPlan(card) {
+// Open the tag-group thread (all cards sharing `tag`). Read-only over cards — no
+// CRUD from here — but a full per-group chat thread with its own persisted history.
+function selectTagThread(tag) {
+  if (activeTag === tag) return;         // re-clicking the open group is a no-op
+  activeTag = tag;
+  activeCard = null;
+  renderList();
+  const n = cards.filter(c => (c.tags || []).includes(tag)).length;
+  document.getElementById('chat-title').textContent = `All: ${tag}`;
+  document.getElementById('chat-subtitle').textContent = `${n} card${n === 1 ? '' : 's'} · group chat`;
+  document.getElementById('input').placeholder = `Ask about all your ${tag} cards…`;
+  closeSidebar();
+
+  if (!user.location) {
+    showLocationSetup({ kind: 'garden', name: `your ${tag} cards` });
+  } else {
+    updateLocChip(user.location);
+    showRefreshBtn(false);               // group threads have no per-card refresh
+    loadHistoryOrPlan(() => generateGroupPlan(tag));
+  }
+}
+
+// On open: replay the persisted transcript for the current thread (card or
+// tag-group) if any — no agent call — else run onEmpty() to seed a first plan.
+async function loadHistoryOrPlan(onEmpty) {
   if (!user.isGuest && user.email) {
     try {
       const sid = getSessionId();
@@ -905,7 +946,7 @@ async function loadHistoryOrPlan(card) {
       console.error('Could not load history:', e);
     }
   }
-  generateCardPlan(card);
+  onEmpty();
 }
 
 function showLocationSetup(card) {
@@ -990,8 +1031,9 @@ async function submitLocation() {
   }
   user.location = val;
   updateLocChip(val);
-  showRefreshBtn(true);
-  loadHistoryOrPlan(activeCard);
+  showRefreshBtn(!activeTag);
+  if (activeTag) loadHistoryOrPlan(() => generateGroupPlan(activeTag));
+  else loadHistoryOrPlan(() => generateCardPlan(activeCard));
 }
 
 function updateLocChip(loc) {
@@ -1004,7 +1046,8 @@ function changeLocation() {
   user.location = '';
   localStorage.setItem('guser', JSON.stringify(user));
   document.getElementById('loc-chip').hidden = true;
-  if (activeCard) showLocationSetup(activeCard);
+  if (activeTag) showLocationSetup({ kind: 'garden', name: `your ${activeTag} cards` });
+  else if (activeCard) showLocationSetup(activeCard);
 }
 
 async function generateCardPlan(card) {
@@ -1042,6 +1085,50 @@ async function generateCardPlan(card) {
     });
   } catch (e) {
     if (!sp) addMsg('agent', `Could not generate instructions: ${e.message}`);
+  } finally {
+    if (activity.isConnected) activity.remove();
+  }
+}
+
+// First-open seed for a tag-group thread: one combined plan spanning every card
+// that shares this tag. Mirrors generateCardPlan but scopes the chat to `tag`.
+async function generateGroupPlan(tag) {
+  document.getElementById('messages').innerHTML = '';
+
+  const names = cards.filter(c => (c.tags || []).includes(tag))
+    .map(c => c.species ? `${c.name} (${c.species})` : c.name);
+  const list = names.length ? names.join(', ') : `my ${tag} cards`;
+  const prompt =
+    `Please generate a combined care plan for all my ${tag} cards: ${list}, in ${user.location}. ` +
+    `Call get_weather("${user.location}") first to check current conditions, then respond with:\n` +
+    `**Current Conditions** – brief weather summary and what it means for these\n` +
+    `**This Week's Tasks** – 3-5 specific actions across these ${tag} cards\n` +
+    `**Seasonal Priorities** – what to focus on this month\n` +
+    `**Watch Out For** – pests, diseases, or weather risks to monitor\n` +
+    `Keep advice practical and note where individual cards differ.`;
+
+  const activity = addTyping();
+  let sp = null;
+  const ensureBubble = () => {
+    if (!sp) { activity.remove(); sp = addMsg('agent', '').querySelector('.text'); }
+    return sp;
+  };
+  try {
+    await streamChat({
+      message: prompt,
+      session_id: getSessionId(),
+      user_id: user.email || '',
+      tag: tag,
+      save_user: false,   // the engineered group-plan prompt isn't replayed as a user bubble
+      username: user.username,
+      location: user.location,
+    }, {
+      onStatus: ({ tool, detail }) => activity.setStatus(toolLabel(tool, detail)),
+      onText: (delta) => { ensureBubble().textContent += delta; document.getElementById('messages').scrollTop = 9999; },
+      onError: (message) => { ensureBubble().textContent += `\n\n[Error: ${message}]`; },
+    });
+  } catch (e) {
+    if (!sp) addMsg('agent', `Could not generate the group plan: ${e.message}`);
   } finally {
     if (activity.isConnected) activity.remove();
   }
@@ -1292,6 +1379,7 @@ function renderPreviews() {
 }
 
 function sessionKey() {
+  if (activeTag) return `sid__${user?.email}__tag_${activeTag}`;
   return `sid__${user?.email}__card_${activeCard?.id || 'gen'}`;
 }
 function getSessionId() {
@@ -1353,6 +1441,7 @@ const TOOL_LABELS = {
   get_plant_care:         '🌱 Looking up plant-care info…',
   search_care_knowledge:  '📚 Searching care knowledge…',
   save_memory:            '📝 Saving a note…',
+  forget_memory:          '🧹 Forgetting…',
 };
 const MCP_TOOLS = new Set([
   'find', 'aggregate', 'count', 'insert-many', 'insert-one',
@@ -1410,7 +1499,7 @@ async function send() {
   if (busy) return;
   const text = inputEl.value.trim();
   if (!text && !pendingPhotos.length) return;
-  if (!activeCard) { alert('Please select a card first.'); return; }
+  if (!activeCard && !activeTag) { alert('Please select a card or group first.'); return; }
 
   busy = true; sendBtn.disabled = true;
 
@@ -1456,7 +1545,7 @@ async function send() {
       session_id: getSessionId(),
       user_id: user.email || '',
       photo_id: firstPhotoId,
-      card_id: activeCard.id,
+      ...(activeTag ? { tag: activeTag } : { card_id: activeCard.id }),
       username: user.username,
       location: user.location || '',
     }, {
