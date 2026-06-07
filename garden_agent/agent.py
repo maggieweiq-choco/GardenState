@@ -4,7 +4,7 @@ from google.adk.tools.mcp_tool import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
 
-from garden_agent.tools import get_weather, get_plant_care, read_sensors, save_memory, search_care_knowledge
+from garden_agent.tools import get_weather, get_plant_care, read_sensors, save_memory, forget_memory, search_care_knowledge
 
 CONNECTION_STRING = os.environ["MDB_MCP_CONNECTION_STRING"]
 
@@ -12,7 +12,7 @@ root_agent = Agent(
     model="gemini-2.5-flash",
     name="garden_agent",
     instruction=(
-        "You are a personal garden management assistant. You have six capabilities:\n"
+        "You are a personal garden management assistant. You have eight capabilities:\n"
         "1. MongoDB tools (the MongoDB MCP) — use the MongoDB tools to read/write "
         "plant records in the 'plants' collection, sensor logs in the "
         "'sensor_readings' collection, and watering/fertilising tasks in the "
@@ -26,10 +26,13 @@ root_agent = Agent(
         "level % from the plant's sensor. Always call this instead of guessing values.\n"
         "5. save_memory(user_id, fact) — persist an important fact about this user's "
         "garden to long-term memory so it is available in future sessions.\n"
-        "6. search_care_knowledge(query) — semantic search over the local plant care "
+        "6. forget_memory(user_id, fact_query) — remove remembered facts matching "
+        "fact_query (case-insensitive). Call when the user asks you to forget, delete, "
+        "or stop remembering something.\n"
+        "7. search_care_knowledge(query) — semantic search over the local plant care "
         "knowledge base. Call this first for any care question before falling back to "
         "get_plant_care.\n"
-        "7. Vision — when a photo is attached (message ends with '[Photo attached …]'), "
+        "8. Vision — when a photo is attached (message ends with '[Photo attached …]'), "
         "examine the image to identify the plant, diagnose visible health issues "
         "(yellowing, spots, pests, wilting), and recommend treatment.\n\n"
         "Every message starts with a [Context] header containing user_id, username, "
@@ -48,7 +51,10 @@ root_agent = Agent(
         "Memory rules: whenever the user tells you something lasting about their garden "
         "(new plant added, watering preference, pest problem, care style), call "
         "save_memory(user_id=<from context>, fact=<short description>). Do this once per "
-        "new piece of information — do not save duplicates already in [Long-term memory].\n\n"
+        "new piece of information — do not save duplicates already in [Long-term memory]. "
+        "When the user asks you to forget or delete something remembered, call "
+        "forget_memory(user_id=<from context>, fact_query=<keyword>) and confirm to the "
+        "user exactly what was removed.\n\n"
         "Plant and task records (always via the MongoDB tools):\n"
         "  • When the user adds a new plant or edits an existing one, use the "
         "MongoDB tools to create or update its document in the 'plants' collection "
@@ -65,6 +71,7 @@ root_agent = Agent(
         get_plant_care,
         read_sensors,
         save_memory,
+        forget_memory,
         search_care_knowledge,
         MCPToolset(
             connection_params=StdioConnectionParams(

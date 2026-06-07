@@ -51,6 +51,25 @@ def load_memories(user_id: str) -> list[str]:
     return doc.get("facts", []) if doc else []
 
 
+def forget_memory(user_id: str, fact_query: str) -> dict:
+    """Remove facts from this user's long-term memory that match fact_query
+    (case-insensitive substring). Call when the user asks you to forget,
+    delete, or stop remembering something. Returns the removed facts."""
+    q = fact_query.strip().lower()
+    if not q:  # guard: an empty query would substring-match (and wipe) every fact
+        return {"removed": [], "count": 0}
+    matched = [f for f in load_memories(user_id) if q in f.lower()]
+    if matched:
+        _memory_col().update_one(
+            {"user_id": user_id},
+            {
+                "$pull": {"facts": {"$in": matched}},
+                "$set": {"updated_at": datetime.utcnow().isoformat()},
+            },
+        )
+    return {"removed": matched, "count": len(matched)}
+
+
 def search_care_knowledge(query: str) -> list[dict]:
     """Search the plant care knowledge base using semantic vector search.
 
