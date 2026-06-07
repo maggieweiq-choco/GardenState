@@ -70,12 +70,33 @@ def forget_memory(user_id: str, fact_query: str) -> dict:
     return {"removed": matched, "count": len(matched)}
 
 
+def is_plant_care_query(query: str) -> bool:
+    """Helper to classify if a query is related to plant care or gardening."""
+    prompt = (
+        "Classify if the following user query is asking for plant care advice, gardening instructions, "
+        "watering schedules, sunlight, soil, pests, or plant species details.\n"
+        "Respond with 'yes' or 'no' only.\n\n"
+        f"Query: {query}"
+    )
+    try:
+        resp = _get_genai().models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+        return resp.text.strip().lower().startswith("yes")
+    except Exception:
+        return True  # Default to True on error to ensure we don't break RAG
+
+
 def search_care_knowledge(query: str) -> list[dict]:
     """Search the plant care knowledge base using semantic vector search.
 
     Call this for any question about plant care: watering schedules, sunlight needs,
     fertilising, common pests, pruning, soil type, etc. Returns the top matching passages.
     """
+    if not is_plant_care_query(query):
+        return [{"message": "Query routed away: not related to plant care."}]
+
     try:
         result = _get_genai().models.embed_content(
             model="gemini-embedding-001",
