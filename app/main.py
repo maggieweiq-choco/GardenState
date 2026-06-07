@@ -53,6 +53,9 @@ cards_col.create_index("user_id")
 chat_history_col = _db["chat_history"]
 chat_history_col.create_index([("user_id", 1), ("session_id", 1), ("ts", 1)])
 
+notif_prefs_col = _db["notification_prefs"]
+notif_prefs_col.create_index("user_id", unique=True)
+
 # Card "kind" facet — must match the frontend KIND set.
 CARD_KINDS = {"plant", "bed", "lawn", "indoor", "garden"}
 
@@ -112,6 +115,19 @@ class ChatRequest(BaseModel):
     location: str = ""
     save_user: bool = True  # set False to skip persisting the user message (e.g. the
                             # auto-generated care-plan prompt, which shouldn't replay)
+
+
+class CheckRequest(BaseModel):
+    user_id: str
+    location: str = ""
+    card_ids: list[str] = []   # empty = check all cards
+
+
+class NotifPrefsRequest(BaseModel):
+    user_id: str
+    enabled_card_ids: list[str] = []   # empty = watch all cards
+    frequency_hours: int = 24          # 24 | 48 | 168
+    time_of_day: str = "morning"       # morning | afternoon | evening
 
 
 # ════════════════════════════════
@@ -266,6 +282,33 @@ def delete_card(card_id: str, user_id: str = Query(...)):
     return {"deleted": card_id}
 
 
+class CardUpdateRequest(BaseModel):
+    user_id: str
+    name: str = ""
+    kind: str = ""
+    tags: list[str] = []
+    species: str = ""
+    photo_id: str = ""
+
+
+@app.patch("/api/cards/{card_id}")
+def update_card(card_id: str, req: CardUpdateRequest):
+    updates = {k: v for k, v in {
+        "name": req.name, "kind": req.kind,
+        "tags": req.tags, "species": req.species, "photo_id": req.photo_id,
+    }.items() if v != "" and v != []}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    res = cards_col.update_one(
+        {"_id": card_id, "user_id": req.user_id},
+        {"$set": updates},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Card not found")
+    doc = cards_col.find_one({"_id": card_id}, {"_id": 0})
+    return {**doc, "id": card_id}
+
+
 _IDENTIFY_INSTRUCTION = (
     "You are a horticulture expert. Identify the single main plant or garden subject "
     "shown in this photo for a garden-care app. Respond with JSON only — no prose, no "
@@ -331,6 +374,121 @@ def _save_history(user_id: str, session_id: str, card_id: str, role: str, text: 
         })
     except Exception:
         pass
+
+
+@app.get("/api/notif-prefs")
+def get_notif_prefs(user_id: str = Query(...)):
+    doc = notif_prefs_col.find_one({"user_id": user_id}, {"_id": 0})
+    return doc or {"enabled_card_ids": [], "frequency_hours": 24, "time_of_day": "morning"}
+
+
+@app.post("/api/notif-prefs")
+def save_notif_prefs(req: NotifPrefsRequest):
+    notif_prefs_col.update_one(
+        {"user_id": req.user_id},
+        {"$set": {
+            "enabled_card_ids": req.enabled_card_ids,
+            "frequency_hours": req.frequency_hours,
+            "time_of_day": req.time_of_day,
+            "updated_at": datetime.utcnow().isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"status": "saved"}
+
+
+@app.post("/api/check")
+async def garden_check(req: CheckRequest):
+    """Run a care check for the user, streaming the agent's report.
+    If card_ids is provided, only those cards are checked."""
+    user_id = req.user_id
+    location = req.location or "your area"
+
+    raw_cards = list(cards_col.find(
+        {"user_id": user_id},
+        {"_id": 1, "name": 1, "species": 1, "kind": 1},
+    ))
+    # Filter to selected cards if caller specified a subset
+    if req.card_ids:
+        allowed = set(req.card_ids)
+        raw_cards = [c for c in raw_cards if str(c["_id"]) in allowed]
+
+    def _ndjson(obj: dict) -> str:
+        return json.dumps(obj, ensure_ascii=False) + "\n"
+
+    if not raw_cards:
+        async def _empty():
+            yield _ndjson({"type": "text", "delta": "No plants or areas added yet — use '+ Add Plant or Area' to get started!"})
+        return StreamingResponse(_empty(), media_type="application/x-ndjson")
+
+    card_lines = "\n".join(
+        f"- {c.get('name', '?')} ({c.get('species') or c.get('kind', 'plant')}), sensor_id={str(c['_id'])}"
+        for c in raw_cards
+    )
+
+    memories = load_memories(user_id)
+    mem_block = ""
+    if memories:
+        mem_block = "[Long-term memory:\n" + "\n".join(f"- {f}" for f in memories) + "]\n"
+
+    prompt = (
+        f"[Context: user_id={user_id}, location={location}]\n"
+        f"{mem_block}"
+        f"Quick care check on all my plants and areas.\n\n"
+        f"Plants and areas:\n{card_lines}\n\n"
+        f"Do this:\n"
+        f'1. Call get_weather("{location}") — one call only\n'
+        f"2. Call read_sensors() once per plant using its sensor_id\n\n"
+        f"Reply using ONLY these four section headers in plain text (no asterisks, no markdown):\n\n"
+        f"💧 Needs Water Now\n"
+        f"(list plants with soil moisture under 35%, show the exact %, one sentence each)\n\n"
+        f"🌿 Fertilize This Week\n"
+        f"(what needs feeding now, one sentence each)\n\n"
+        f"🚨 Disease & Pest Watch\n"
+        f"(risks from weather + plant type — e.g. late blight, aphids — one sentence each)\n\n"
+        f"✅ All Looking Good\n"
+        f"(plants needing no action right now)\n\n"
+        f"Rules: plain text only, no asterisks, no markdown. Name each plant. One sentence per item. Be direct."
+    )
+
+    check_session_id = f"check_{uuid.uuid4().hex}"
+    try:
+        await session_service.create_session(
+            app_name="garden", user_id=user_id, session_id=check_session_id,
+        )
+    except Exception:
+        pass
+
+    async def generate():
+        try:
+            async for event in runner.run_async(
+                user_id=user_id,
+                session_id=check_session_id,
+                new_message=Content(role="user", parts=[Part(text=prompt)]),
+            ):
+                get_calls = getattr(event, "get_function_calls", None)
+                if get_calls:
+                    for call in get_calls() or []:
+                        name = getattr(call, "name", "") or ""
+                        args = getattr(call, "args", None) or {}
+                        detail = ""
+                        if isinstance(args, dict):
+                            detail = str(
+                                args.get("plant_id")
+                                or args.get("query")
+                                or args.get("location")
+                                or args.get("plant_name")
+                                or ""
+                            )
+                        yield _ndjson({"type": "status", "tool": name, "detail": detail})
+                if event.is_final_response() and event.content:
+                    for part in event.content.parts:
+                        if part.text:
+                            yield _ndjson({"type": "text", "delta": part.text})
+        except Exception as e:
+            yield _ndjson({"type": "error", "message": str(e)})
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 
 @app.post("/chat")

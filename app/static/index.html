@@ -159,6 +159,20 @@
       padding: 14px 16px 6px;
     }
 
+    .sb-section-row {
+      display: flex; align-items: center;
+      padding: 14px 8px 6px 16px;
+    }
+    .sb-section-row .sb-section { padding: 0; flex: 1; }
+    .sb-edit-types {
+      background: none; border: none;
+      color: rgba(255,255,255,.45);
+      font-size: 14px; cursor: pointer;
+      padding: 2px 8px; border-radius: 6px;
+      transition: all .14s; flex-shrink: 0;
+    }
+    .sb-edit-types:hover { color: #fff; background: rgba(255,255,255,.15); }
+
     #garden-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
 
     .g-item {
@@ -197,14 +211,14 @@
       background: rgba(255,255,255,.16);
       white-space: nowrap;
     }
-    .g-item .gi-rm {
-      opacity: 0; font-size: 14px;
-      background: none; border: none; color: #fff;
+    .gi-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .14s; flex-shrink: 0; }
+    .g-item:hover .gi-actions { opacity: 1; }
+    .g-item .gi-edit, .g-item .gi-rm {
+      font-size: 13px; background: none; border: none; color: #fff;
       cursor: pointer; padding: 2px 5px; border-radius: 5px;
-      transition: opacity .14s; flex-shrink: 0;
     }
-    .g-item:hover .gi-rm    { opacity: .55; }
-    .g-item .gi-rm:hover    { opacity: 1; background: rgba(255,255,255,.15); }
+    .g-item .gi-edit:hover { background: rgba(255,255,255,.15); }
+    .g-item .gi-rm:hover   { background: rgba(255,255,255,.15); }
     .list-empty { padding: 10px 16px; font-size: 13px; opacity: .55; }
 
     /* Tag filter row */
@@ -499,7 +513,8 @@
     /* ════════════════════════════
        ADD GARDEN MODAL
     ════════════════════════════ */
-    #modal-overlay {
+    #modal-overlay,
+    #gt-modal-overlay {
       position: fixed; inset: 0;
       background: rgba(0,0,0,.42);
       display: flex; align-items: center; justify-content: center;
@@ -572,6 +587,186 @@
     .btn-ok     { background: var(--g500); color: #fff; font-weight: 600; }
     .btn-ok:disabled { background: #ccc; cursor: default; }
 
+    /* Notifications section in sidebar */
+    .notif-section {
+      margin: 4px 8px 8px;
+      background: rgba(255,255,255,.08);
+      border-radius: 14px;
+      padding: 12px 12px 10px;
+    }
+    .notif-section-lbl {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .09em; color: rgba(255,255,255,.45);
+      margin-bottom: 8px; padding: 0 2px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .notif-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #ff5252; flex-shrink: 0; display: none;
+    }
+    .notif-dot.show { display: inline-block; }
+    .notif-actions { display: flex; gap: 7px; }
+    .notif-check-btn {
+      flex: 1;
+      background: rgba(255,255,255,.18);
+      border: none; color: #fff;
+      border-radius: 10px; padding: 11px 8px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background .14s;
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+    }
+    .notif-check-btn:hover { background: rgba(255,255,255,.28); }
+    .notif-settings-btn {
+      flex-shrink: 0;
+      background: rgba(255,255,255,.06);
+      border: 1.5px solid rgba(255,255,255,.2);
+      color: rgba(255,255,255,.75);
+      border-radius: 10px; padding: 11px 13px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all .14s;
+      display: flex; align-items: center; gap: 5px; white-space: nowrap;
+    }
+    .notif-settings-btn:hover { background: rgba(255,255,255,.16); color: #fff; border-color: rgba(255,255,255,.35); }
+
+    /* ════════════════════════════
+       CARE CHECK MODAL
+    ════════════════════════════ */
+    #check-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.42);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .check-modal {
+      background: #fff; border-radius: 20px;
+      width: min(460px, calc(100vw - 32px));
+      max-height: 78dvh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 12px 40px rgba(0,0,0,.24);
+      overflow: hidden;
+    }
+    .check-modal-hdr {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--g200);
+      display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0;
+    }
+    .check-modal-hdr h3 { flex: 1; font-size: 16px; color: var(--g900); margin: 0; }
+    .check-modal-close {
+      background: none; border: none; color: #aaa;
+      font-size: 18px; cursor: pointer;
+      padding: 2px 7px; border-radius: 6px;
+    }
+    .check-modal-close:hover { color: #333; background: #f4f4f4; }
+    .check-modal-body {
+      flex: 1; overflow-y: auto; padding: 16px 20px;
+      font-size: 14px; line-height: 1.7; color: #333;
+      word-break: break-word;
+    }
+    .check-section { margin-bottom: 14px; }
+    .check-section-hdr {
+      font-size: 14px; font-weight: 700; color: var(--g900);
+      margin-bottom: 4px;
+    }
+    .check-section p { margin: 2px 0; padding-left: 4px; font-size: 13.5px; }
+    .check-idle {
+      color: #bbb; font-size: 13px; text-align: center;
+      padding: 30px 0;
+    }
+    .check-activity {
+      display: flex; align-items: center; gap: 8px;
+      color: #999; font-size: 13px; padding: 6px 0;
+    }
+    .check-modal-ftr {
+      padding: 12px 20px;
+      border-top: 1px solid var(--g200);
+      display: flex; justify-content: flex-end;
+      flex-shrink: 0;
+    }
+    .btn-recheck {
+      background: var(--g500); color: #fff;
+      border: none; border-radius: 10px;
+      padding: 10px 20px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background .14s;
+    }
+    .btn-recheck:hover    { background: var(--g700); }
+    .btn-recheck:disabled { background: #ccc; cursor: default; }
+
+    /* ════════════════════════════
+       NOTIFICATION SETTINGS MODAL
+    ════════════════════════════ */
+    #notif-settings-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.42);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 110;
+    }
+    .ns-modal {
+      background: #fff; border-radius: 20px;
+      width: min(420px, calc(100vw - 32px));
+      max-height: 82dvh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 12px 40px rgba(0,0,0,.24);
+      overflow: hidden;
+    }
+    .ns-hdr {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--g200);
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    }
+    .ns-hdr h3 { flex: 1; font-size: 16px; color: var(--g900); margin: 0; }
+    .ns-close {
+      background: none; border: none; color: #aaa;
+      font-size: 18px; cursor: pointer; padding: 2px 7px; border-radius: 6px;
+    }
+    .ns-close:hover { color: #333; background: #f4f4f4; }
+    .ns-body { flex: 1; overflow-y: auto; padding: 0 20px 4px; }
+    .ns-group { padding: 16px 0 12px; border-bottom: 1px solid #f0f0f0; }
+    .ns-group:last-child { border-bottom: none; }
+    .ns-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: #999; margin-bottom: 10px;
+    }
+    /* Card checkboxes */
+    .ns-card-list { display: flex; flex-direction: column; gap: 6px; }
+    .ns-card-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 10px;
+      cursor: pointer; transition: background .12s;
+    }
+    .ns-card-row:hover { background: var(--g50); }
+    .ns-card-row input[type=checkbox] {
+      width: 16px; height: 16px; accent-color: var(--g500);
+      cursor: pointer; flex-shrink: 0;
+    }
+    .ns-card-icon { font-size: 18px; flex-shrink: 0; }
+    .ns-card-name { font-size: 14px; color: #333; flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Frequency & time chips */
+    .ns-chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ns-chip {
+      padding: 7px 14px; border-radius: 999px;
+      border: 1.5px solid #e0e0e0; background: none;
+      font-size: 13px; color: #555; cursor: pointer; transition: all .12s;
+    }
+    .ns-chip:hover { border-color: var(--g500); color: var(--g700); }
+    .ns-chip.on { border-color: var(--g500); background: var(--g50); color: var(--g700); font-weight: 600; }
+    .ns-hint { font-size: 12px; color: #aaa; margin-top: 10px; line-height: 1.5; }
+    .ns-ftr {
+      padding: 14px 20px;
+      border-top: 1px solid var(--g200); flex-shrink: 0;
+      display: flex; gap: 10px;
+    }
+    .ns-ftr button { flex: 1; padding: 11px; border-radius: 10px; border: none; font-size: 14px; cursor: pointer; }
+    .ns-ftr .btn-cancel { background: #f4f4f4; color: #777; }
+    .ns-ftr .btn-save   { background: var(--g500); color: #fff; font-weight: 600; }
+    .ns-ftr .btn-save:hover { background: var(--g700); }
+    /* Next-check info line at bottom of check modal */
+    .check-next {
+      font-size: 12px; color: #aaa; padding: 0 20px 10px;
+      flex-shrink: 0; text-align: right;
+    }
+
     /* ════════════════════════════
        MOBILE
     ════════════════════════════ */
@@ -620,10 +815,23 @@
       </div>
     </div>
 
-    <div class="sb-section">My Gardens</div>
+    <div class="sb-section-row">
+      <div class="sb-section">My Gardens</div>
+      <button class="sb-edit-types" onclick="openGardenTypeModal()" title="Manage garden types">✎</button>
+    </div>
     <div class="tag-filter" id="tag-filter" hidden></div>
     <div id="garden-list"></div>
-    <button class="add-btn" onclick="openModal()">＋ Add Card</button>
+    <button class="add-btn" onclick="openModal()">＋ Add Plant or Area</button>
+    <div class="notif-section">
+      <div class="notif-section-lbl">
+        <span class="notif-dot" id="notif-dot"></span>
+        Notifications
+      </div>
+      <div class="notif-actions">
+        <button class="notif-check-btn" onclick="openCheckModal()">🔔 Check Now</button>
+        <button class="notif-settings-btn" onclick="openNotifSettings()">⚙ Set Reminder</button>
+      </div>
+    </div>
     <button class="logout-btn" onclick="doLogout()">⬅ Sign out</button>
   </div>
 
@@ -675,8 +883,8 @@
 ════════════════════════════ -->
 <div id="modal-overlay" hidden>
   <div class="modal">
-    <h3>Add a Card</h3>
-    <p>A card is anything you care for — one plant, a bed, a lawn, or the whole garden.</p>
+    <h3 id="modal-title">Add a Plant or Area</h3>
+    <p>Track anything you care for — a single plant, a flower bed, a lawn, or your whole garden.</p>
     <div class="card-form">
       <div class="card-photo">
         <button type="button" class="card-photo-btn" id="card-photo-btn" onclick="pickCardPhoto()">
@@ -704,7 +912,82 @@
     </div>
     <div class="modal-row">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-      <button class="btn-ok" id="modal-ok" disabled onclick="confirmAdd()">Add Card</button>
+      <button class="btn-ok" id="modal-ok" disabled onclick="confirmAdd()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════
+     GARDEN TYPE PICKER MODAL
+════════════════════════════ -->
+<div id="gt-modal-overlay" hidden>
+  <div class="modal">
+    <h3>My Garden Types</h3>
+    <p>Select the types of gardens you manage. The tabs at the top update instantly.</p>
+    <div class="type-grid" id="gt-type-grid"></div>
+    <div class="modal-row">
+      <button class="btn-cancel" onclick="closeGardenTypeModal()">Cancel</button>
+      <button class="btn-ok" onclick="saveGardenTypes()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════
+     CARE CHECK MODAL
+════════════════════════════ -->
+<div id="check-modal-overlay" hidden>
+  <div class="check-modal">
+    <div class="check-modal-hdr">
+      <h3>🔔 Garden Care Check</h3>
+      <button class="check-modal-close" onclick="closeCheckModal()">✕</button>
+    </div>
+    <div class="check-modal-body" id="check-modal-body">
+      <div class="check-idle">Press "Check Now" to scan all your plants and areas.</div>
+    </div>
+    <div class="check-next" id="check-next-line" hidden></div>
+    <div class="check-modal-ftr">
+      <button class="btn-recheck" id="btn-recheck" onclick="runCheck()">↻ Check Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════
+     NOTIFICATION SETTINGS MODAL
+════════════════════════════ -->
+<div id="notif-settings-overlay" hidden>
+  <div class="ns-modal">
+    <div class="ns-hdr">
+      <h3>⚙ Notification Settings</h3>
+      <button class="ns-close" onclick="closeNotifSettings()">✕</button>
+    </div>
+    <div class="ns-body">
+      <div class="ns-group">
+        <div class="ns-label">Which plants &amp; areas to watch</div>
+        <div class="ns-card-list" id="ns-card-list">
+          <!-- filled by openNotifSettings() -->
+        </div>
+      </div>
+      <div class="ns-group">
+        <div class="ns-label">How often</div>
+        <div class="ns-chip-row" id="ns-freq-row">
+          <button class="ns-chip" data-h="24"  onclick="pickFreq(this)">Daily</button>
+          <button class="ns-chip" data-h="48"  onclick="pickFreq(this)">Every 2 days</button>
+          <button class="ns-chip" data-h="168" onclick="pickFreq(this)">Weekly</button>
+        </div>
+      </div>
+      <div class="ns-group">
+        <div class="ns-label">Best time of day</div>
+        <div class="ns-chip-row" id="ns-time-row">
+          <button class="ns-chip" data-t="morning"   onclick="pickTime(this)">Morning</button>
+          <button class="ns-chip" data-t="afternoon" onclick="pickTime(this)">Afternoon</button>
+          <button class="ns-chip" data-t="evening"   onclick="pickTime(this)">Evening</button>
+        </div>
+        <p class="ns-hint">When you open the app during this window and a check is due, it runs automatically.</p>
+      </div>
+    </div>
+    <div class="ns-ftr">
+      <button class="btn-cancel" onclick="closeNotifSettings()">Cancel</button>
+      <button class="btn-save"   onclick="saveNotifPrefs()">Save</button>
     </div>
   </div>
 </div>
@@ -715,6 +998,20 @@
 // ════════════════════════════
 // Card kinds (facets). Emoji drives the sidebar + location-setup icon.
 const KIND_EMOJI = { plant: "🌱", bed: "🌸", lawn: "🌿", indoor: "🪴", garden: "🏡" };
+
+// Master list of garden types users can pick from.
+const GARDEN_TYPES = [
+  { id: "flower",    emoji: "🌸", label: "Flower" },
+  { id: "vegetable", emoji: "🥕", label: "Vegetable" },
+  { id: "herb",      emoji: "🌿", label: "Herb" },
+  { id: "lawn",      emoji: "🍃", label: "Lawn" },
+  { id: "orchard",   emoji: "🍎", label: "Orchard" },
+  { id: "tree",      emoji: "🌳", label: "Trees & Shrubs" },
+  { id: "berry",     emoji: "🫐", label: "Berry" },
+  { id: "tropical",  emoji: "🌴", label: "Tropical" },
+  { id: "indoor",    emoji: "🪴", label: "Indoor" },
+  { id: "succulent", emoji: "🌵", label: "Succulent" },
+];
 const kindEmoji = (k) => KIND_EMOJI[k] || "🌱";
 
 // ════════════════════════════
@@ -767,6 +1064,7 @@ async function showApp() {
   document.getElementById('sb-email').textContent = user.isGuest ? 'Guest — data not saved' : user.email;
   document.getElementById('guest-banner').hidden  = !user.isGuest;
   await loadCards();
+  await loadNotifPrefs();   // load notification prefs + check if a check is due
 }
 
 // ════════════════════════════
@@ -789,26 +1087,31 @@ async function loadCards() {
   renderList();
 }
 
-// Union of every card's tags (sorted), for the filter row.
+// Unique garden-type tags across all cards (e.g. "flower", "lawn", "vegetable").
 function allTags() {
   const s = new Set();
   cards.forEach(c => (c.tags || []).forEach(t => s.add(t)));
   return [...s].sort();
 }
 
-// Tag filter chips: "All" + each tag. Hidden when no card has tags.
+// Filter chips: "All" + one chip per garden type the user has selected.
+// Logged-in users: use user.gardens (explicit type list).
+// Guests or empty gardens: fall back to card-tag union.
 function renderTagFilter() {
   const row = document.getElementById('tag-filter');
-  const tags = allTags();
-  // The filter's tag may have vanished with its last card → fall back to All.
-  if (tagFilter !== 'All' && !tags.includes(tagFilter)) tagFilter = 'All';
-  if (!tags.length) { row.hidden = true; row.innerHTML = ''; return; }
+  const types = (user?.gardens?.length) ? user.gardens : allTags();
+  if (tagFilter !== 'All' && !types.includes(tagFilter)) tagFilter = 'All';
   row.hidden = false;
   row.innerHTML = '';
-  ['All', ...tags].forEach(t => {
+  ['All', ...types].forEach(t => {
     const b = document.createElement('button');
     b.className = 'tf-chip' + (tagFilter === t ? ' on' : '');
-    b.textContent = t === 'All' ? 'All' : `#${t}`;
+    if (t === 'All') {
+      b.textContent = 'All';
+    } else {
+      const gt = GARDEN_TYPES.find(g => g.id === t);
+      b.textContent = gt ? `${gt.emoji} ${gt.label}` : t.charAt(0).toUpperCase() + t.slice(1);
+    }
     b.addEventListener('click', () => setTagFilter(t));
     row.appendChild(b);
   });
@@ -841,28 +1144,14 @@ function renderList() {
   const el = document.getElementById('garden-list');
   el.innerHTML = '';
   if (!cards.length) {
-    el.innerHTML = '<div class="list-empty">No cards yet.</div>';
+    el.innerHTML = '<div class="list-empty">No plants or areas yet.</div>';
     return;
-  }
-  // Pin a group-chat pseudo-entry above the cards when a specific tag filter is active.
-  if (tagFilter !== 'All') {
-    const n = cards.filter(c => (c.tags || []).includes(tagFilter)).length;
-    const g = document.createElement('div');
-    g.className = 'g-item group' + (activeTag === tagFilter ? ' active' : '');
-    g.innerHTML =
-      `<span class="gi-thumb">💬</span>
-       <div class="gi-body">
-         <div class="gi-name">All ${esc(tagFilter)}</div>
-         <div class="gi-sub">${n} card${n === 1 ? '' : 's'} · group chat</div>
-       </div>`;
-    g.addEventListener('click', () => selectTagThread(tagFilter));
-    el.appendChild(g);
   }
   const visible = tagFilter === 'All'
     ? cards
     : cards.filter(c => (c.tags || []).includes(tagFilter));
   if (!visible.length) {
-    el.insertAdjacentHTML('beforeend', `<div class="list-empty">No cards tagged #${esc(tagFilter)}.</div>`);
+    el.insertAdjacentHTML('beforeend', `<div class="list-empty">No ${esc(tagFilter)} gardens yet.</div>`);
     return;
   }
   visible.forEach(c => {
@@ -875,8 +1164,12 @@ function renderList() {
          ${c.species ? `<div class="gi-sub">${esc(c.species)}</div>` : ''}
          ${cardTagChips(c)}
        </div>
-       <button class="gi-rm" title="Remove">✕</button>`;
-    div.querySelector('.gi-rm').addEventListener('click', e => { e.stopPropagation(); removeCard(c.id); });
+       <div class="gi-actions">
+         <button class="gi-edit" title="Edit">✎</button>
+         <button class="gi-rm"   title="Remove">✕</button>
+       </div>`;
+    div.querySelector('.gi-edit').addEventListener('click', e => { e.stopPropagation(); openEditModal(c); });
+    div.querySelector('.gi-rm').addEventListener('click',  e => { e.stopPropagation(); removeCard(c.id); });
     div.addEventListener('click', () => selectCard(c));
     el.appendChild(div);
   });
@@ -1188,12 +1481,42 @@ async function removeCard(id) {
 // ════════════════════════════
 //  Add card modal
 // ════════════════════════════
+let editingCardId = null;   // null = add mode, string = edit mode
+
 function openModal() {
+  editingCardId = null;
+  document.getElementById('modal-title').textContent = 'Add a Plant or Area';
+  document.getElementById('modal-ok').textContent = 'Add';
   document.getElementById('card-name').value = '';
   document.getElementById('card-kind').value = 'plant';
   document.getElementById('card-species').value = '';
   document.getElementById('card-tags').value = '';
   clearCardPhoto();
+  updateAddBtn();
+  document.getElementById('modal-overlay').hidden = false;
+  setTimeout(() => document.getElementById('card-name')?.focus(), 50);
+}
+
+function openEditModal(card) {
+  editingCardId = card.id;
+  document.getElementById('modal-title').textContent = 'Edit Garden';
+  document.getElementById('modal-ok').textContent = 'Save Changes';
+  document.getElementById('card-name').value = card.name || '';
+  document.getElementById('card-kind').value = card.kind || 'plant';
+  document.getElementById('card-species').value = card.species || '';
+  document.getElementById('card-tags').value = (card.tags || []).join(', ');
+  clearCardPhoto();
+  if (card.photo_id) {
+    pendingCardPhotoId = card.photo_id;
+    const thumb = document.getElementById('card-photo-thumb');
+    if (thumb) { thumb.src = `/photos/${card.photo_id}.jpg`; }
+    const info = document.getElementById('card-photo-info');
+    if (info) { info.hidden = false; }
+    const btn = document.getElementById('card-photo-btn');
+    if (btn) btn.hidden = true;
+    const status = document.getElementById('card-photo-status');
+    if (status) status.textContent = '📷 Current photo';
+  }
   updateAddBtn();
   document.getElementById('modal-overlay').hidden = false;
   setTimeout(() => document.getElementById('card-name')?.focus(), 50);
@@ -1286,6 +1609,31 @@ async function confirmAdd() {
     .split(',').map(s => s.trim()).filter(Boolean);
   const photo_id = pendingCardPhotoId;
 
+  // ── Edit mode ──
+  if (editingCardId) {
+    if (!user.isGuest && user.email) {
+      try {
+        const r = await fetch(`/api/cards/${encodeURIComponent(editingCardId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.email, name, kind, tags, species, photo_id }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const updated = await r.json();
+        const idx = cards.findIndex(c => c.id === editingCardId);
+        if (idx !== -1) cards[idx] = { ...updated, id: editingCardId };
+        if (activeCard?.id === editingCardId) activeCard = cards[idx];
+      } catch (e) { alert('Could not save changes: ' + e.message); return; }
+    } else {
+      const idx = cards.findIndex(c => c.id === editingCardId);
+      if (idx !== -1) cards[idx] = { ...cards[idx], name, kind, tags, species, photo_id };
+    }
+    closeModal();
+    renderList();
+    return;
+  }
+
+  // ── Add mode ──
   let card;
   if (!user.isGuest && user.email) {
     try {
@@ -1302,13 +1650,78 @@ async function confirmAdd() {
       return;
     }
   } else {
-    // Guest: in-memory only (data not saved).
     card = { id: crypto.randomUUID(), name, kind, tags, species, photo_id };
   }
   cards.push(card);
   closeModal();
   renderList();
   selectCard(card);
+}
+
+// ════════════════════════════
+//  Garden type manager modal
+// ════════════════════════════
+let selectedGardenTypes = [];   // local scratch copy during the modal session
+
+function openGardenTypeModal() {
+  selectedGardenTypes = [...(user?.gardens || [])];
+  const grid = document.getElementById('gt-type-grid');
+  grid.innerHTML = '';
+  GARDEN_TYPES.forEach(g => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'type-opt' + (selectedGardenTypes.includes(g.id) ? ' picked' : '');
+    btn.dataset.id = g.id;
+    btn.innerHTML = `<span class="te">${g.emoji}</span><span class="tl">${g.label}</span>`;
+    btn.addEventListener('click', () => {
+      const idx = selectedGardenTypes.indexOf(g.id);
+      if (idx === -1) { selectedGardenTypes.push(g.id); btn.classList.add('picked'); }
+      else            { selectedGardenTypes.splice(idx, 1); btn.classList.remove('picked'); }
+    });
+    grid.appendChild(btn);
+  });
+  document.getElementById('gt-modal-overlay').hidden = false;
+}
+
+function closeGardenTypeModal() {
+  document.getElementById('gt-modal-overlay').hidden = true;
+}
+
+async function saveGardenTypes() {
+  const prev = user?.gardens || [];
+  const next  = selectedGardenTypes;
+  const toAdd = next.filter(t => !prev.includes(t));
+  const toRem = prev.filter(t => !next.includes(t));
+
+  if (!user.isGuest && user.email) {
+    try {
+      for (const t of toAdd) {
+        const r = await fetch('/api/gardens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, garden_type: t }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      }
+      for (const t of toRem) {
+        const r = await fetch('/api/gardens', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, garden_type: t }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      }
+    } catch (e) {
+      alert('Could not save garden types: ' + e.message);
+      return;
+    }
+  }
+
+  user.gardens = next;
+  if (!user.isGuest) localStorage.setItem('guser', JSON.stringify(user));
+  closeGardenTypeModal();
+  if (tagFilter !== 'All' && !next.includes(tagFilter)) tagFilter = 'All';
+  renderList();
 }
 
 // ════════════════════════════
@@ -1482,10 +1895,10 @@ function toolLabel(tool, detail) {
   return `⚙️ <code>${esc(tool || 'tool')}</code>…`;
 }
 
-// Shared NDJSON stream reader for /chat. Buffers chunks, splits on "\n",
-// JSON-parses complete lines (partial tail stays buffered), dispatches by type.
-async function streamChat(body, { onStatus, onText, onError } = {}) {
-  const res = await fetch('/chat', {
+// Shared NDJSON stream reader for /chat (and other streaming endpoints).
+// Buffers chunks, splits on "\n", JSON-parses complete lines, dispatches by type.
+async function streamChat(body, { onStatus, onText, onError } = {}, url = '/chat') {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1579,6 +1992,230 @@ async function send() {
   } finally {
     if (activity.isConnected) activity.remove();
     busy = false; sendBtn.disabled = false; inputEl.focus();
+  }
+}
+
+// ════════════════════════════
+//  Notification Preferences
+// ════════════════════════════
+let notifPrefs = { enabled_card_ids: [], frequency_hours: 24, time_of_day: 'morning' };
+
+// Load prefs from backend and check if a notification is due.
+async function loadNotifPrefs() {
+  if (!user?.email) return;
+  try {
+    const r = await fetch(`/api/notif-prefs?user_id=${encodeURIComponent(user.email)}`);
+    if (r.ok) notifPrefs = await r.json();
+  } catch { /* use defaults */ }
+  checkNotifDue();
+}
+
+// Compute the stored "next check" timestamp from localStorage.
+function notifNextKey() { return `notif_next_${user?.email}`; }
+
+function checkNotifDue() {
+  const stored = localStorage.getItem(notifNextKey());
+  if (!stored) return;
+  const due = new Date(stored);
+  const now = new Date();
+  if (now < due) return;   // not due yet
+  // Due — show red dot only if we're in the preferred time window
+  const h = now.getHours();
+  const windows = { morning: [6, 11], afternoon: [11, 16], evening: [16, 22] };
+  const [lo, hi] = windows[notifPrefs.time_of_day] || [0, 24];
+  if (h >= lo && h < hi) {
+    document.getElementById('notif-dot').classList.add('show');
+  }
+}
+
+function updateNextCheckLine() {
+  const stored = localStorage.getItem(notifNextKey());
+  const el = document.getElementById('check-next-line');
+  if (!stored || !el) return;
+  const dt = new Date(stored);
+  const opts = { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  el.textContent = `Next check: ${dt.toLocaleString(undefined, opts)}`;
+  el.hidden = false;
+}
+
+function scheduleNextCheck() {
+  const ms = (notifPrefs.frequency_hours || 24) * 3_600_000;
+  localStorage.setItem(notifNextKey(), new Date(Date.now() + ms).toISOString());
+  document.getElementById('notif-dot').classList.remove('show');
+  updateNextCheckLine();
+}
+
+// ── Settings modal ──
+function openNotifSettings() {
+  // Populate card list
+  const list = document.getElementById('ns-card-list');
+  list.innerHTML = '';
+  const enabled = new Set(notifPrefs.enabled_card_ids || []);
+  const watchAll = enabled.size === 0;
+  cards.forEach(c => {
+    const row = document.createElement('label');
+    row.className = 'ns-card-row';
+    row.innerHTML =
+      `<input type="checkbox" value="${esc(c.id)}" ${watchAll || enabled.has(c.id) ? 'checked' : ''}>
+       <span class="ns-card-icon">${kindEmoji(c.kind)}</span>
+       <span class="ns-card-name">${esc(c.name)}</span>`;
+    list.appendChild(row);
+  });
+
+  // Frequency chips
+  document.querySelectorAll('#ns-freq-row .ns-chip').forEach(b => {
+    b.classList.toggle('on', parseInt(b.dataset.h) === (notifPrefs.frequency_hours || 24));
+  });
+  // Time chips
+  document.querySelectorAll('#ns-time-row .ns-chip').forEach(b => {
+    b.classList.toggle('on', b.dataset.t === (notifPrefs.time_of_day || 'morning'));
+  });
+
+  document.getElementById('notif-settings-overlay').hidden = false;
+}
+
+function closeNotifSettings() {
+  document.getElementById('notif-settings-overlay').hidden = true;
+}
+
+function pickFreq(btn) {
+  document.querySelectorAll('#ns-freq-row .ns-chip').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+function pickTime(btn) {
+  document.querySelectorAll('#ns-time-row .ns-chip').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+async function saveNotifPrefs() {
+  const checkedIds = [...document.querySelectorAll('#ns-card-list input:checked')].map(i => i.value);
+  // If all cards are checked, store empty (= "all") to avoid stale IDs after card changes
+  const allIds = cards.map(c => c.id);
+  const enabled_card_ids = checkedIds.length === allIds.length ? [] : checkedIds;
+
+  const freqBtn = document.querySelector('#ns-freq-row .ns-chip.on');
+  const timeBtn = document.querySelector('#ns-time-row .ns-chip.on');
+  const frequency_hours = freqBtn ? parseInt(freqBtn.dataset.h) : 24;
+  const time_of_day     = timeBtn ? timeBtn.dataset.t : 'morning';
+
+  notifPrefs = { enabled_card_ids, frequency_hours, time_of_day };
+
+  if (user?.email) {
+    try {
+      await fetch('/api/notif-prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.email, enabled_card_ids, frequency_hours, time_of_day }),
+      });
+    } catch { /* best-effort */ }
+  }
+
+  closeNotifSettings();
+  scheduleNextCheck();
+}
+
+// ════════════════════════════
+//  Garden Care Check
+// ════════════════════════════
+let checkBusy = false;
+
+function openCheckModal() {
+  document.getElementById('check-modal-overlay').hidden = false;
+  updateNextCheckLine();
+  // Auto-run if the modal is fresh (idle state) and not already running
+  const body = document.getElementById('check-modal-body');
+  if (body.querySelector('.check-idle') && !checkBusy) runCheck();
+}
+
+function closeCheckModal() {
+  document.getElementById('check-modal-overlay').hidden = true;
+}
+
+async function runCheck() {
+  if (checkBusy) return;
+  if (!user?.email) { alert('Sign in to use the garden check.'); return; }
+  if (!user.location) {
+    alert('Set your garden location first by selecting a plant or area.');
+    return;
+  }
+
+  checkBusy = true;
+  const recheck = document.getElementById('btn-recheck');
+  recheck.disabled = true;
+  recheck.textContent = '⏳ Checking…';
+
+  const body = document.getElementById('check-modal-body');
+  body.innerHTML = '<div class="check-activity">🔍 Scanning sensors, weather, and care knowledge…</div>';
+
+  let resultText = '';
+  const activityEl = () => body.querySelector('.check-activity');
+
+  // Render accumulated plain-text into clean HTML sections.
+  // Sections are delimited by lines starting with an emoji header.
+  function renderCheckResult(text) {
+    const HEADERS = ['💧', '🌿', '🚨', '✅'];
+    const escaped = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')   // strip any stray ** bold markers
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = escaped.split('\n');
+    let html = '';
+    let inSection = false;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      const isHeader = HEADERS.some(e => line.startsWith(e));
+      if (isHeader) {
+        if (inSection) html += '</div>';
+        html += `<div class="check-section"><div class="check-section-hdr">${line}</div>`;
+        inSection = true;
+      } else if (inSection) {
+        const bullet = line.startsWith('-') ? line.slice(1).trim() : line;
+        html += `<p>• ${bullet}</p>`;
+      } else {
+        html += `<p>${line}</p>`;
+      }
+    }
+    if (inSection) html += '</div>';
+    return html || `<p>${escaped}</p>`;
+  }
+
+  // Determine which card IDs to check (empty = all)
+  const card_ids = notifPrefs.enabled_card_ids || [];
+
+  try {
+    await streamChat(
+      { user_id: user.email, location: user.location, card_ids },
+      {
+        onStatus: ({ tool }) => {
+          const el = activityEl();
+          if (!el) return;
+          const labels = {
+            read_sensors:  '📡 Reading soil sensors…',
+            get_weather:   '🌦 Checking local weather…',
+          };
+          el.textContent = labels[tool] || '⚙️ Analyzing…';
+        },
+        onText: (delta) => {
+          if (activityEl()) body.innerHTML = '';
+          resultText += delta;
+          body.innerHTML = renderCheckResult(resultText);
+          body.scrollTop = body.scrollHeight;
+        },
+        onError: (msg) => {
+          body.innerHTML = `<p style="color:#e53935">Could not complete check: ${esc(msg)}</p>`;
+        },
+      },
+      '/api/check',
+    );
+  } catch (e) {
+    body.innerHTML = `<p style="color:#e53935">Error: ${esc(e.message)}</p>`;
+  } finally {
+    checkBusy = false;
+    recheck.disabled = false;
+    recheck.textContent = '↻ Re-check';
+    if (resultText) scheduleNextCheck();   // reset the countdown after a successful check
+    const hasAlert = resultText.includes('💧') || resultText.includes('🚨');
+    document.getElementById('notif-dot').classList.toggle('show', hasAlert);
   }
 }
 
