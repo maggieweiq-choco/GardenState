@@ -1045,6 +1045,14 @@ async function doLogin() {
 }
 
 function doLogout() {
+  // Remove session-ID keys belonging to this user so a new login starts fresh
+  // (long-term memory and chat history remain in MongoDB, recoverable on next login).
+  if (user?.email) {
+    const prefix = `sid__${user.email}__`;
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(prefix))
+      .forEach(k => localStorage.removeItem(k));
+  }
   localStorage.removeItem('guser');
   user = null; activeCard = null; activeTag = null; cards = [];
   document.getElementById('login-screen').hidden = false;
@@ -1804,8 +1812,8 @@ function sessionKey() {
 }
 function getSessionId() {
   const k = sessionKey();
-  if (!sessionStorage.getItem(k)) sessionStorage.setItem(k, crypto.randomUUID());
-  return sessionStorage.getItem(k);
+  if (!localStorage.getItem(k)) localStorage.setItem(k, crypto.randomUUID());
+  return localStorage.getItem(k);
 }
 
 function addMsg(role, text, imgs = []) {
@@ -1862,6 +1870,7 @@ const TOOL_LABELS = {
   search_care_knowledge:  '📚 Searching care knowledge…',
   save_memory:            '📝 Saving a note…',
   forget_memory:          '🧹 Forgetting…',
+  control_smart_home:     '🏡 Controlling garden device…',
 };
 const MCP_TOOLS = new Set([
   'find', 'aggregate', 'count', 'distinct',

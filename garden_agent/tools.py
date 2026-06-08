@@ -6,6 +6,14 @@ import pymongo
 from google import genai as _genai_module
 from datetime import datetime
 
+# Simulated smart-home device state (resets on restart, mirrors real IoT behaviour).
+_device_state: dict = {
+    "irrigation_zone_A": {"status": "off", "last_run": None},
+    "irrigation_zone_B": {"status": "off", "last_run": None},
+    "camera":            {"status": "online"},
+    "soil_sensor":       {"status": "online"},
+}
+
 _mongo_client: pymongo.MongoClient | None = None
 _genai_client = None
 
@@ -294,3 +302,64 @@ def read_sensors(plant_id: str = "default") -> dict:
         "light_level_pct": light,
         "sensor_battery_pct": random.randint(74, 99),
     }
+
+
+_CAMERA_OBSERVATIONS = [
+    "Plants look healthy with good leaf colour.",
+    "Slight yellowing on lower leaves — possible nitrogen deficiency.",
+    "Soil surface appears dry; consider watering soon.",
+    "New growth visible — plants are actively growing.",
+    "Spotted a few aphids on leaf undersides; monitor closely.",
+    "Leaves look wilted — check soil moisture and temperature.",
+    "Mulch layer is intact; moisture retention looks good.",
+]
+
+
+def control_smart_home(device: str, action: str, duration_minutes: int = 10) -> dict:
+    """Control a smart garden device or request a camera snapshot.
+
+    device: 'irrigation_zone_A', 'irrigation_zone_B', 'camera', or 'soil_sensor'
+    action: 'on' | 'off' | 'status' | 'snapshot'
+    duration_minutes: how long to run irrigation (only used when action='on')
+
+    Call this when the user asks to water their garden, stop watering, check device
+    status, or take a photo of the garden.
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    if device not in _device_state:
+        available = ", ".join(_device_state)
+        return {"error": f"Unknown device '{device}'. Available: {available}"}
+
+    if action == "status":
+        return {"device": device, "state": _device_state[device]}
+
+    if action == "on" and "irrigation" in device:
+        _device_state[device]["status"] = "running"
+        _device_state[device]["last_run"] = now
+        return {
+            "device": device,
+            "status": "started",
+            "duration_minutes": duration_minutes,
+            "started_at": now,
+            "message": f"Irrigation {device} running for {duration_minutes} min.",
+        }
+
+    if action == "off" and "irrigation" in device:
+        _device_state[device]["status"] = "off"
+        return {
+            "device": device,
+            "status": "stopped",
+            "stopped_at": now,
+            "message": f"Irrigation {device} stopped.",
+        }
+
+    if action == "snapshot" and device == "camera":
+        return {
+            "device": "camera",
+            "timestamp": now,
+            "observation": random.choice(_CAMERA_OBSERVATIONS),
+            "image_url": "simulated://garden_snapshot.jpg",
+        }
+
+    return {"error": f"Action '{action}' is not supported for device '{device}'."}

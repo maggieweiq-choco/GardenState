@@ -4,7 +4,7 @@ from google.adk.tools.mcp_tool import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
 
-from garden_agent.tools import get_weather, get_plant_care, read_sensors, save_memory, forget_memory, search_care_knowledge
+from garden_agent.tools import get_weather, get_plant_care, read_sensors, save_memory, forget_memory, search_care_knowledge, control_smart_home
 
 CONNECTION_STRING = os.environ["MDB_MCP_CONNECTION_STRING"]
 
@@ -38,7 +38,11 @@ root_agent = Agent(
         "(e.g., general watering frequency, general pest issues for a plant family) before falling back to get_plant_care.\n"
         "8. Vision — when a photo is attached (message ends with '[Photo attached …]'), "
         "examine the image to identify the plant, diagnose visible health issues "
-        "(yellowing, spots, pests, wilting), and recommend treatment.\n\n"
+        "(yellowing, spots, pests, wilting), and recommend treatment.\n"
+        "9. control_smart_home(device, action, duration_minutes) — control simulated "
+        "garden devices: irrigation zones (on/off/status) and a camera (snapshot/status). "
+        "Call this when the user asks to start/stop watering or take a garden photo. "
+        "Devices: 'irrigation_zone_A', 'irrigation_zone_B', 'camera', 'soil_sensor'.\n\n"
         "Every message starts with a [Context] header containing user_id, username, "
         "garden type, and location. It may also include a [Long-term memory] block with "
         "facts remembered from previous sessions — use these to personalise your answers.\n\n"
@@ -77,6 +81,7 @@ root_agent = Agent(
         save_memory,
         forget_memory,
         search_care_knowledge,
+        control_smart_home,
         MCPToolset(
             connection_params=StdioConnectionParams(
                 server_params=StdioServerParameters(

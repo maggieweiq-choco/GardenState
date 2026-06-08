@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from garden_agent.agent import root_agent
 from garden_agent.tools import load_memories, _get_genai
+from garden_agent.seed_knowledge import seed_if_empty
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai.types import Content, Part, Blob, GenerateContentConfig
@@ -56,6 +57,9 @@ chat_history_col.create_index([("user_id", 1), ("session_id", 1), ("ts", 1)])
 notif_prefs_col = _db["notification_prefs"]
 notif_prefs_col.create_index("user_id", unique=True)
 
+# Auto-seed care_knowledge on first deploy (no-op if already populated)
+seed_if_empty()
+
 # Card "kind" facet — must match the frontend KIND set.
 CARD_KINDS = {"plant", "bed", "lawn", "indoor", "garden"}
 
@@ -67,9 +71,18 @@ _LEGACY_TYPE_LABELS = {
     "berry": "Berry Garden", "tropical": "Tropical Plants",
 }
 
-# TODO: move uploads to GCS for multi-instance (local disk is ephemeral per Cloud Run instance)
-UPLOADS_DIR = Path(__file__).parent / "uploads"
-UPLOADS_DIR.mkdir(exist_ok=True)
+# Photos are stored on local disk. On Cloud Run this is ephemeral but safe as long
+# as min-instances=1 (no cold-start data loss within a session). GCS migration is
+# the correct long-term fix when multi-instance or persistence across restarts is needed.
+_preferred_uploads = Path(__file__).parent / "uploads"
+try:
+    _preferred_uploads.mkdir(exist_ok=True)
+    UPLOADS_DIR = _preferred_uploads
+except OSError:
+    import tempfile, warnings
+    UPLOADS_DIR = Path(tempfile.gettempdir()) / "garden_uploads"
+    UPLOADS_DIR.mkdir(exist_ok=True)
+    warnings.warn(f"Could not create uploads dir at {_preferred_uploads}; using {UPLOADS_DIR}")
 
 
 # ════════════════════════════════
