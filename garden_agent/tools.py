@@ -6,6 +6,14 @@ import pymongo
 from google import genai as _genai_module
 from datetime import datetime
 
+# Simulated smart-home device state (resets on restart, mirrors real IoT behaviour).
+_device_state: dict = {
+    "irrigation_zone_A": {"status": "off", "last_run": None},
+    "irrigation_zone_B": {"status": "off", "last_run": None},
+    "camera":            {"status": "online"},
+    "soil_sensor":       {"status": "online"},
+}
+
 _mongo_client: pymongo.MongoClient | None = None
 _genai_client = None
 
@@ -46,9 +54,96 @@ def save_memory(user_id: str, fact: str) -> dict:
     return {"status": "saved", "user_id": user_id, "fact": fact}
 
 
-def load_memories(user_id: str) -> list[str]:
-    doc = _memory_col().find_one({"user_id": user_id}, {"facts": 1})
-    return doc.get("facts", []) if doc else []
+def load_memories(user_id: str) -> dict:
+    """Return all stored memory for a user as a structured dict:
+    { facts: [...], preferences: {...}, plant_notes: {...} }"""
+    doc = _memory_col().find_one({"user_id": user_id}, {"facts": 1, "preferences": 1, "plant_notes": 1})
+    if not doc:
+        return {"facts": [], "preferences": {}, "plant_notes": {}}
+    return {
+        "facts":       doc.get("facts", []),
+        "preferences": doc.get("preferences", {}),
+        "plant_notes": doc.get("plant_notes", {}),
+    }
+
+
+def forget_memory(user_id: str, fact_query: str) -> dict:
+    """Remove facts from this user's long-term memory that match fact_query
+    (case-insensitive substring). Call when the user asks you to forget,
+    delete, or stop remembering something. Returns the removed facts."""
+    q = fact_query.strip().lower()
+    if not q:  # guard: an empty query would substring-match (and wipe) every fact
+        return {"removed": [], "count": 0}
+    matched = [f for f in load_memories(user_id)["facts"] if q in f.lower()]
+    if matched:
+        _memory_col().update_one(
+            {"user_id": user_id},
+            {
+                "$pull": {"facts": {"$in": matched}},
+                "$set": {"updated_at": datetime.utcnow().isoformat()},
+            },
+        )
+    return {"removed": matched, "count": len(matched)}
+
+
+def save_preference(user_id: str, key: str, value: str) -> dict:
+    """Save a user preference to long-term memory.
+
+    Use this for structured, reusable preferences — NOT one-off facts.
+    Common keys:
+      experience_level  — "beginner" | "intermediate" | "expert"
+      watering_time     — e.g. "morning", "evening"
+      advice_style      — e.g. "no chemical fertilizer", "prefer organic"
+      language_detail   — "concise" | "detailed"
+    Call save_memory() for general facts; use this only for named preferences.
+    """
+    _memory_col().update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                f"preferences.{key}": value,
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        },
+        upsert=True,
+    )
+    return {"status": "saved", "key": key, "value": value}
+
+
+def save_plant_note(user_id: str, plant_name: str, note: str) -> dict:
+    """Save a personal note about a specific plant (e.g. sentimental value, custom name,
+    observation). plant_name is used as the key, so use a consistent short name.
+    Examples: save_plant_note(user_id, "tomato", "grandma's heirloom variety, planted May 2024")
+    """
+    _memory_col().update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                f"plant_notes.{plant_name}": note,
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        },
+        upsert=True,
+    )
+    return {"status": "saved", "plant": plant_name, "note": note}
+
+
+def is_plant_care_query(query: str) -> bool:
+    """Helper to classify if a query is related to plant care or gardening."""
+    prompt = (
+        "Classify if the following user query is asking for plant care advice, gardening instructions, "
+        "watering schedules, sunlight, soil, pests, or plant species details.\n"
+        "Respond with 'yes' or 'no' only.\n\n"
+        f"Query: {query}"
+    )
+    try:
+        resp = _get_genai().models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
+        return resp.text.strip().lower().startswith("yes")
+    except Exception:
+        return True  # Default to True on error to ensure we don't break RAG
 
 
 def search_care_knowledge(query: str) -> list[dict]:
@@ -57,6 +152,9 @@ def search_care_knowledge(query: str) -> list[dict]:
     Call this for any question about plant care: watering schedules, sunlight needs,
     fertilising, common pests, pruning, soil type, etc. Returns the top matching passages.
     """
+    if not is_plant_care_query(query):
+        return [{"message": "Query routed away: not related to plant care."}]
+
     try:
         result = _get_genai().models.embed_content(
             model="gemini-embedding-001",
@@ -118,6 +216,14 @@ async def get_weather(location: str) -> dict:
             )
             geo.raise_for_status()
             results = geo.json().get("results")
+            # Fallback: if "City, State" format not found, retry with just the city name
+            if not results and "," in location:
+                city_only = location.split(",")[0].strip()
+                geo2 = await client.get(
+                    "https://geocoding-api.open-meteo.com/v1/search",
+                    params={"name": city_only, "count": 1, "language": "en", "format": "json"},
+                )
+                results = geo2.json().get("results")
             if not results:
                 return {"error": f"Location '{location}' not found"}
 
@@ -246,3 +352,64 @@ def read_sensors(plant_id: str = "default") -> dict:
         "light_level_pct": light,
         "sensor_battery_pct": random.randint(74, 99),
     }
+
+
+_CAMERA_OBSERVATIONS = [
+    "Plants look healthy with good leaf colour.",
+    "Slight yellowing on lower leaves — possible nitrogen deficiency.",
+    "Soil surface appears dry; consider watering soon.",
+    "New growth visible — plants are actively growing.",
+    "Spotted a few aphids on leaf undersides; monitor closely.",
+    "Leaves look wilted — check soil moisture and temperature.",
+    "Mulch layer is intact; moisture retention looks good.",
+]
+
+
+def control_smart_home(device: str, action: str, duration_minutes: int = 10) -> dict:
+    """Control a smart garden device or request a camera snapshot.
+
+    device: 'irrigation_zone_A', 'irrigation_zone_B', 'camera', or 'soil_sensor'
+    action: 'on' | 'off' | 'status' | 'snapshot'
+    duration_minutes: how long to run irrigation (only used when action='on')
+
+    Call this when the user asks to water their garden, stop watering, check device
+    status, or take a photo of the garden.
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    if device not in _device_state:
+        available = ", ".join(_device_state)
+        return {"error": f"Unknown device '{device}'. Available: {available}"}
+
+    if action == "status":
+        return {"device": device, "state": _device_state[device]}
+
+    if action == "on" and "irrigation" in device:
+        _device_state[device]["status"] = "running"
+        _device_state[device]["last_run"] = now
+        return {
+            "device": device,
+            "status": "started",
+            "duration_minutes": duration_minutes,
+            "started_at": now,
+            "message": f"Irrigation {device} running for {duration_minutes} min.",
+        }
+
+    if action == "off" and "irrigation" in device:
+        _device_state[device]["status"] = "off"
+        return {
+            "device": device,
+            "status": "stopped",
+            "stopped_at": now,
+            "message": f"Irrigation {device} stopped.",
+        }
+
+    if action == "snapshot" and device == "camera":
+        return {
+            "device": "camera",
+            "timestamp": now,
+            "observation": random.choice(_CAMERA_OBSERVATIONS),
+            "image_url": "simulated://garden_snapshot.jpg",
+        }
+
+    return {"error": f"Action '{action}' is not supported for device '{device}'."}

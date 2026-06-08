@@ -182,5 +182,24 @@ def main() -> None:
     print("\nThe index builds in ~1 minute. After that, search_care_knowledge() is live.")
 
 
+def seed_if_empty() -> None:
+    """Called at server startup: seeds care_knowledge only when the collection is empty.
+    Safe to call on every restart — skips immediately if docs already exist."""
+    try:
+        mongo = pymongo.MongoClient(os.environ["MDB_MCP_CONNECTION_STRING"])
+        col = mongo["garden"]["care_knowledge"]
+        if col.count_documents({}) > 0:
+            return   # already seeded
+        print("[seed_knowledge] care_knowledge is empty — seeding now...")
+        client = genai.Client()
+        texts = [d["text"] for d in DOCS]
+        response = client.models.embed_content(model="gemini-embedding-001", contents=texts)
+        docs = [{**doc, "embedding": emb.values} for doc, emb in zip(DOCS, response.embeddings)]
+        col.insert_many(docs)
+        print(f"[seed_knowledge] Inserted {len(docs)} documents.")
+    except Exception as e:
+        print(f"[seed_knowledge] Warning: could not auto-seed care_knowledge: {e}")
+
+
 if __name__ == "__main__":
     main()
