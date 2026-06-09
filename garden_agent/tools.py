@@ -146,43 +146,6 @@ def is_plant_care_query(query: str) -> bool:
         return True  # Default to True on error to ensure we don't break RAG
 
 
-def forget_memory(user_id: str, fact_query: str) -> dict:
-    """Remove facts from this user's long-term memory that match fact_query
-    (case-insensitive substring). Call when the user asks you to forget,
-    delete, or stop remembering something. Returns the removed facts."""
-    q = fact_query.strip().lower()
-    if not q:  # guard: an empty query would substring-match (and wipe) every fact
-        return {"removed": [], "count": 0}
-    matched = [f for f in load_memories(user_id) if q in f.lower()]
-    if matched:
-        _memory_col().update_one(
-            {"user_id": user_id},
-            {
-                "$pull": {"facts": {"$in": matched}},
-                "$set": {"updated_at": datetime.utcnow().isoformat()},
-            },
-        )
-    return {"removed": matched, "count": len(matched)}
-
-
-def is_plant_care_query(query: str) -> bool:
-    """Helper to classify if a query is related to plant care or gardening."""
-    prompt = (
-        "Classify if the following user query is asking for plant care advice, gardening instructions, "
-        "watering schedules, sunlight, soil, pests, or plant species details.\n"
-        "Respond with 'yes' or 'no' only.\n\n"
-        f"Query: {query}"
-    )
-    try:
-        resp = _get_genai().models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-        return resp.text.strip().lower().startswith("yes")
-    except Exception:
-        return True  # Default to True on error to ensure we don't break RAG
-
-
 def search_care_knowledge(query: str) -> list[dict]:
     """Search the plant care knowledge base using semantic vector search.
 

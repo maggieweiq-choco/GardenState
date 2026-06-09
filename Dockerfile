@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # (Optional hardening) pre-install the MongoDB MCP server so the container does not
 # fetch it from npm on first request — faster cold start, no runtime npm dependency.
 # Uncomment to enable:
-# RUN npm install -g mongodb-mcp-server@latest
+RUN npm install -g mongodb-mcp-server@latest
 
 # Copy requirements first (better layer caching)
 COPY requirements.txt .
