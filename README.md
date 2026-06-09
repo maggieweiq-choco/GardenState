@@ -15,7 +15,7 @@ FastAPI  ─── app/main.py
   ▼
 ADK Runner  ─── garden_agent/agent.py
   │  Gemini 2.5 Flash · tool orchestration · per-card history
-  ├── get_weather()           Open-Meteo geocoding + forecast (city-only fallback)
+  ├── get_weather()           Open-Meteo: current + 3-day forecast + frost/heat/rain alerts
   ├── get_plant_care()        Perenual plant database API
   ├── read_sensors()          Time-of-day physics model (simulated IoT)
   ├── control_smart_home()    Simulated irrigation zones + garden camera
@@ -47,7 +47,7 @@ ADK Runner  ─── garden_agent/agent.py
 | **Chat** | Streaming NDJSON via ADK + Gemini 2.5 Flash; history replays on card re-open |
 | **Care cards** | Add, edit, delete plants/areas; photo auto-identifies species via Gemini |
 | **Garden types** | User-managed type list (flower, vegetable, herb, etc.) drives sidebar filter tabs |
-| **Weather** | Open-Meteo (free, no key) — retries with city-only name if "City, State" fails |
+| **Weather** | Open-Meteo (free, no key) — current conditions + 3-day forecast; city-only fallback for "City, State" input |
 | **Plant care lookup** | Perenual API — watering frequency, sunlight needs, care level |
 | **Sensor data** | Simulated soil moisture / temp / light via time-of-day physics model |
 | **Smart home control** | `control_smart_home()` — start/stop irrigation zones, take camera snapshots |
@@ -194,6 +194,18 @@ The **🔔 Check Now** button in the sidebar runs the agent across all (or selec
 - `soil_sensor` — status check
 
 Say "start watering zone A for 20 minutes" or "take a photo of the garden" in chat.
+
+### Weather — Current + 3-Day Forecast
+`get_weather(location)` returns current conditions and a 3-day daily forecast in a single Open-Meteo call (free, no API key). The response includes garden-specific derived alerts:
+
+| Alert | Trigger | Agent behaviour |
+|---|---|---|
+| `frost_risk` | Any day's min temp < 2 °C | Warns about frost protection |
+| `heat_stress` | Any day's max temp > 35 °C | Advises extra watering / shade |
+| `rain_coming` | > 2 mm rain in next 3 days | Notes upcoming rain |
+| `skip_watering` | > 2 mm rain expected today or tomorrow | Tells user to skip watering |
+
+Example: asking "should I water today?" when rain is forecast returns *"8 mm of rain expected tomorrow — skip watering today."*
 
 ### Vision
 Photos are converted to JPEG in the browser (handles HEIC from iPhone) before upload. The backend passes image bytes as a `Blob` Part alongside the text to Gemini — the model sees the actual image for true multimodal analysis.
