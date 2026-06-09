@@ -19,19 +19,22 @@ ADK Runner  ─── garden_agent/agent.py
   ├── get_plant_care()        Perenual plant database API
   ├── read_sensors()          Time-of-day physics model (simulated IoT)
   ├── control_smart_home()    Simulated irrigation zones + garden camera
-  ├── save_memory()           MongoDB user_memories (long-term, cross-session)
+  ├── save_memory()           MongoDB user_memories · general facts
   ├── forget_memory()         Remove facts from long-term memory on request
+  ├── save_preference()       Store named preferences (experience level, watering time, etc.)
+  ├── save_plant_note()       Store personal notes tied to a specific plant
   ├── search_care_knowledge() Atlas Vector Search RAG (gemini-embedding-001)
   ├── Vision                  HEIC/JPEG/PNG → Gemini multimodal plant diagnosis
-  └── MongoDB MCP             CRUD on plant records, sensor logs, tasks
+  └── MongoDB MCP             CRUD on plant records, sensor logs, tasks, variety specs
         └── garden DB (Atlas)
               ├── users
               ├── plants               ← care cards
+              ├── plants_knowledge     ← variety specs (days_to_harvest, spacing, pests, etc.)
               ├── chat_history         ← per-card transcript (persistent across sessions)
               ├── sensor_readings
               ├── tasks
               ├── care_knowledge       ← RAG knowledge base (18 docs, 3072-dim embeddings)
-              ├── user_memories        ← per-user long-term memory
+              ├── user_memories        ← per-user long-term memory (facts + preferences + plant notes)
               └── notification_prefs   ← per-user notification schedule
 ```
 
@@ -51,7 +54,8 @@ ADK Runner  ─── garden_agent/agent.py
 | **Vision** | Upload any photo (HEIC, JPEG, PNG) → converted to JPEG → Gemini diagnoses plant health |
 | **Real-time location** | Browser Geolocation → `/api/geocode` → Google Maps API or Nominatim fallback |
 | **RAG** | `search_care_knowledge()` embeds query with `gemini-embedding-001`, runs `$vectorSearch` |
-| **Long-term memory** | Facts learned across sessions stored in `user_memories`, injected as context every turn |
+| **Long-term memory** | Facts, preferences, and plant notes stored in `user_memories`, injected as context every turn |
+| **Behavioral adaptation** | Agent adapts tone and detail to the user's experience level (beginner / intermediate / expert) and season |
 | **Chat history** | Per-card transcripts persisted in MongoDB; restored on login across browser restarts |
 | **Notifications** | Garden care check across all cards (sensors + weather); configurable frequency + time window |
 | **Guest mode** | Full functionality without login; data not persisted to MongoDB |
@@ -154,8 +158,25 @@ Users manage their garden type list (flower, vegetable, herb, lawn, orchard, tre
 
 ### Long-Term Memory + Chat History
 Two separate persistence layers:
-- **Long-term memory** (`user_memories`): facts the agent learns about the user ("prefers organic pest control", "has aphids on roses"). Injected as context on every turn, survives logout.
-- **Chat history** (`chat_history`): full per-card transcript. Session IDs stored in `localStorage` so history restores correctly after browser close or logout/login.
+
+**Long-term memory** (`user_memories`) stores three types of information:
+- **Facts** — general observations the agent records (`save_memory`): new plants added, pest sightings, care events, care style
+- **Preferences** (`save_preference`) — named, reusable settings:
+  - `experience_level` (beginner / intermediate / expert) — controls how detailed the agent's advice is
+  - `watering_time` — preferred watering window the agent always suggests
+  - `advice_style` — e.g. "no chemical fertilizer", "prefer organic"
+  - `language_detail` — concise or detailed explanations
+- **Plant notes** (`save_plant_note`) — personal notes tied to a specific plant (sentimental history, custom observations)
+
+All three blocks are injected as context at the start of every turn and survive logout and browser close.
+
+**Chat history** (`chat_history`): full per-card transcript. Session IDs stored in `localStorage` so history restores correctly after browser close or logout/login.
+
+### Behavioral Adaptation
+The agent automatically adapts based on stored preferences:
+- **Experience level**: if not set, the agent asks once early in the conversation and saves the answer. Beginners get step-by-step explanations with the "why"; experts get concise, direct advice.
+- **Seasonal awareness**: the agent infers the current season from today's date and the user's location, automatically shifting focus to the most relevant tasks (e.g. frost protection in winter, watering frequency in summer).
+- **Preference respect**: advice never recommends an approach the user has excluded, and watering suggestions always use the user's preferred time window.
 
 ### Notifications
 The **🔔 Check Now** button in the sidebar runs the agent across all (or selected) cards — it reads sensors, checks weather, and produces a plain-text report sectioned by:
