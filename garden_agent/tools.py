@@ -202,10 +202,13 @@ _WMO_CODES = {
 
 
 async def get_weather(location: str) -> dict:
-    """Get current weather for a location (city name, e.g. 'Toronto' or 'Seattle').
+    """Get current weather AND a 3-day forecast for a location.
 
-    Uses Open-Meteo (free, no API key). Returns temperature, humidity,
-    precipitation, wind speed, and a text description.
+    Uses Open-Meteo (free, no API key). Returns:
+    - current conditions (temp, humidity, precipitation, wind, description)
+    - 3-day daily forecast (min/max temp, rain sum, description)
+    - alerts: frost_risk (True if any day's min < 2 °C), rain_coming (True if
+      any day expects > 2 mm), skip_watering (True if rain expected today or tomorrow)
     """
     async with httpx.AsyncClient(timeout=10) as client:
         try:
@@ -230,7 +233,7 @@ async def get_weather(location: str) -> dict:
             place = results[0]
             lat, lon = place["latitude"], place["longitude"]
 
-            # Step 2: fetch current weather
+            # Step 2: fetch current weather + 3-day daily forecast in one call
             wx = await client.get(
                 "https://api.open-meteo.com/v1/forecast",
                 params={
@@ -241,14 +244,49 @@ async def get_weather(location: str) -> dict:
                         "apparent_temperature", "precipitation",
                         "weather_code", "cloud_cover", "wind_speed_10m",
                     ]),
+                    "daily": ",".join([
+                        "temperature_2m_max", "temperature_2m_min",
+                        "precipitation_sum", "weather_code",
+                        "precipitation_probability_max",
+                    ]),
+                    "forecast_days": 3,
                     "wind_speed_unit": "ms",
                     "timezone": "auto",
                 },
             )
             wx.raise_for_status()
-            cur = wx.json()["current"]
+            data = wx.json()
+            cur = data["current"]
+            daily = data.get("daily", {})
 
             code = cur.get("weather_code", 0)
+
+            # Build 3-day forecast list
+            dates      = daily.get("time", [])
+            max_temps  = daily.get("temperature_2m_max", [])
+            min_temps  = daily.get("temperature_2m_min", [])
+            rain_sums  = daily.get("precipitation_sum", [])
+            rain_probs = daily.get("precipitation_probability_max", [])
+            day_codes  = daily.get("weather_code", [])
+
+            forecast = []
+            for i, date in enumerate(dates):
+                forecast.append({
+                    "date": date,
+                    "max_c": max_temps[i] if i < len(max_temps) else None,
+                    "min_c": min_temps[i] if i < len(min_temps) else None,
+                    "rain_mm": rain_sums[i] if i < len(rain_sums) else 0,
+                    "rain_probability_pct": rain_probs[i] if i < len(rain_probs) else 0,
+                    "description": _WMO_CODES.get(day_codes[i] if i < len(day_codes) else 0, ""),
+                })
+
+            # Derive garden-relevant alerts
+            frost_risk     = any(f["min_c"] is not None and f["min_c"] < 2 for f in forecast)
+            heat_stress    = any(f["max_c"] is not None and f["max_c"] > 35 for f in forecast)
+            rain_coming    = any((f["rain_mm"] or 0) > 2 for f in forecast)
+            # Skip watering if meaningful rain expected today or tomorrow
+            skip_watering  = any((forecast[i]["rain_mm"] or 0) > 2 for i in range(min(2, len(forecast))))
+
             return {
                 "location": place["name"],
                 "country": place.get("country", ""),
@@ -259,6 +297,13 @@ async def get_weather(location: str) -> dict:
                 "wind_speed_ms": cur["wind_speed_10m"],
                 "precipitation_mm": cur["precipitation"],
                 "clouds_pct": cur["cloud_cover"],
+                "forecast_3day": forecast,
+                "alerts": {
+                    "frost_risk": frost_risk,
+                    "heat_stress": heat_stress,
+                    "rain_coming": rain_coming,
+                    "skip_watering": skip_watering,
+                },
             }
         except httpx.HTTPStatusError as e:
             return {"error": f"Weather API error {e.response.status_code}", "location": location}

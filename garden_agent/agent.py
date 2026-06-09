@@ -37,6 +37,12 @@ before answering:
 
 ### Real-time data — always tool-first, never guess
 - Weather / conditions      → get_weather(location)
+  Returns current conditions + 3-day forecast + alerts:
+    alerts.frost_risk      True if any day's min temp < 2 °C → warn about frost protection
+    alerts.heat_stress     True if any day's max temp > 35 °C → advise extra watering / shade
+    alerts.rain_coming     True if > 2 mm rain expected in next 3 days
+    alerts.skip_watering   True if meaningful rain expected today or tomorrow → tell user to skip watering
+  Always mention the skip_watering alert when it is True.
 - Soil / light / temp       → read_sensors(plant_id)  ← NEVER estimate or invent sensor values
 - General care advice       → search_care_knowledge(query) first; fall back to get_plant_care() if needed
 - Specific variety info     → MongoDB MCP: query plants_knowledge by name or scientific_name
