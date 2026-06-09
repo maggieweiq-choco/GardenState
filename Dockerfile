@@ -4,10 +4,17 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (needed for some packages)
+# Install system deps + Node.js 20 (the MongoDB MCP server runs via `npx`)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+    build-essential ca-certificates curl gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# (Optional hardening) pre-install the MongoDB MCP server so the container does not
+# fetch it from npm on first request — faster cold start, no runtime npm dependency.
+# Uncomment to enable:
+# RUN npm install -g mongodb-mcp-server@latest
 
 # Copy requirements first (better layer caching)
 COPY requirements.txt .
