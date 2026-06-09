@@ -458,3 +458,26 @@ def control_smart_home(device: str, action: str, duration_minutes: int = 10) -> 
         }
 
     return {"error": f"Action '{action}' is not supported for device '{device}'."}
+
+
+def get_variety_specifications(variety_name: str) -> list[dict]:
+    """Look up detailed variety specifications (germination, height, spacing, sowing method, pests, etc.)
+    for a specific plant variety from the plants_knowledge database.
+
+    Call this when the user asks about a specific plant variety, its germination time, spacing, height,
+    or sowing/growing instructions.
+    """
+    try:
+        db = _garden_db()
+        query = {
+            "$or": [
+                {"name": {"$regex": variety_name, "$options": "i"}},
+                {"scientific_name": {"$regex": variety_name, "$options": "i"}}
+            ]
+        }
+        cursor = db["plants_knowledge"].find(query, {"_id": 0}).limit(3)
+        results = list(cursor)
+        return results if results else [{"message": f"No variety specifications found for '{variety_name}'."}]
+    except Exception as e:
+        return [{"error": str(e)}]
+

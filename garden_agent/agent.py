@@ -9,6 +9,7 @@ from garden_agent.tools import (
     save_memory, forget_memory,
     save_preference, save_plant_note,
     search_care_knowledge, control_smart_home,
+    get_variety_specifications,
 )
 
 CONNECTION_STRING = os.environ["MDB_MCP_CONNECTION_STRING"]
@@ -45,7 +46,7 @@ before answering:
   Always mention the skip_watering alert when it is True.
 - Soil / light / temp       → read_sensors(plant_id)  ← NEVER estimate or invent sensor values
 - General care advice       → search_care_knowledge(query) first; fall back to get_plant_care() if needed
-- Specific variety info     → MongoDB MCP: query plants_knowledge by name or scientific_name
+- Specific variety info     → get_variety_specifications(variety_name)  ← NEVER guess variety specs
 
 ### MongoDB MCP — all persistence goes through these tools
 Database: 'garden'. Collections and their purpose:
@@ -55,13 +56,6 @@ Database: 'garden'. Collections and their purpose:
                       with fields: user_id, plant_id, values, and timestamp.
   tasks               Log every watering or fertilising action recommended or confirmed,
                       with fields: user_id, plant_id, action, timestamp.
-  plants_knowledge    Variety specs — query when users ask about a specific variety,
-                      germination time, spacing, height, or sowing instructions.
-                      Fields: name, scientific_name, description, category,
-                      days_to_harvest, days_to_germination, plant_height, plant_spacing,
-                      sun_requirement, water_requirement, sowing_method,
-                      common_pests, common_diseases.
-                      Query using a case-insensitive regex or exact filter on 'name' or 'scientific_name'.
 
 Always use the MongoDB tools for this work (never invent storage). After any write, read
 the record back to confirm it succeeded.
@@ -82,6 +76,11 @@ Save once per new piece of information. Never duplicate what is already in [Long
   Devices:  irrigation_zone_A | irrigation_zone_B | camera | soil_sensor
   Actions:  on | off | status | snapshot
   Call when the user asks to water, stop watering, check a device, or take a garden photo.
+
+### Variety specifications lookup
+  get_variety_specifications(variety_name)
+  Look up detailed variety specs (germination time, spacing, plant height, sowing method, pests, diseases)
+  from the plants_knowledge database. Use this for questions about a specific plant variety or scientific name.
 
 ### Vision
 When a message ends with '[Photo attached …]': identify the plant, diagnose visible
@@ -166,6 +165,7 @@ root_agent = Agent(
         save_plant_note,
         search_care_knowledge,
         control_smart_home,
+        get_variety_specifications,
         MCPToolset(
             connection_params=StdioConnectionParams(
                 server_params=StdioServerParameters(
