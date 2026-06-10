@@ -45,7 +45,7 @@ ADK Runner  ─── garden_agent/agent.py
 | Capability | How it works |
 |---|---|
 | **Chat** | Streaming NDJSON via ADK + Gemini 2.5 Flash; history replays on card re-open |
-| **Care cards** | Add, edit, delete plants/areas; photo auto-identifies species via Gemini |
+| **Care cards** | Add, edit, delete plants/areas; photo identifies species + auto-matches to existing cards |
 | **Garden types** | User-managed type list (flower, vegetable, herb, etc.) drives sidebar filter tabs |
 | **Weather** | Open-Meteo (free, no key) — current conditions + 3-day forecast; city-only fallback for "City, State" input |
 | **Plant care lookup** | Perenual API — watering frequency, sunlight needs, care level |
@@ -138,7 +138,7 @@ Open `http://localhost:8000`.
 | `POST` | `/api/cards` | Create a care card |
 | `PATCH` | `/api/cards/{card_id}` | Edit a care card |
 | `DELETE` | `/api/cards/{card_id}` | Delete a care card |
-| `POST` | `/api/identify` | Identify a plant from a photo (Gemini vision) |
+| `POST` | `/api/identify` | Identify a plant from a photo; returns species, confidence, auto-matched card, and full card list |
 | `GET` | `/api/notif-prefs?user_id=` | Get notification preferences |
 | `POST` | `/api/notif-prefs` | Save notification preferences |
 | `POST` | `/api/check` | Run a whole-garden care check (streaming NDJSON) |
@@ -151,7 +151,16 @@ Open `http://localhost:8000`.
 ## Key Features in Detail
 
 ### Care Cards
-Each card represents one thing you care for — a single plant, a bed, a lawn, or a whole garden. Cards have a name, kind, species, tags, and optional photo. Uploading a photo triggers Gemini to auto-identify the species and pre-fill the form.
+Each card represents one thing you care for — a single plant, a bed, a lawn, or a whole garden. Cards have a name, kind, species, tags, and optional photo.
+
+**Photo identification flow:**
+1. Upload any photo (HEIC, JPEG, PNG) in the Add card modal
+2. Gemini identifies the plant and returns a species name + confidence score
+3. The app automatically matches the result against your existing cards:
+   - **Auto-match found** → a highlighted button appears: "✅ Use existing card: [name]" — one click to confirm
+   - **Manual override** → a dropdown lists all your cards so you can pick a different one
+   - **No match / new plant** → "➕ Create new card" pre-fills the form with the identified name and species
+4. Confirming an existing card updates it with the new photo; confirming a new card creates it
 
 ### Garden Type Tabs
 Users manage their garden type list (flower, vegetable, herb, lawn, orchard, trees, berry, tropical, indoor, succulent) via a picker in the sidebar. The filter tabs at the top update instantly to match the selected types.
