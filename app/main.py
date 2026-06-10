@@ -110,6 +110,7 @@ class CardRequest(BaseModel):
 
 class IdentifyRequest(BaseModel):
     photo_id: str           # photo_id returned by /upload
+    user_id: str = ""       # optional — enables card matching
 
 _MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
              ".gif": "image/gif", ".webp": "image/webp",
@@ -337,11 +338,26 @@ _IDENTIFY_INSTRUCTION = (
 )
 
 
+def _find_best_match(species: str, name: str, cards: list) -> dict | None:
+    """Return the first card whose species or name overlaps with the identified plant."""
+    sp = species.lower().strip()
+    nm = name.lower().strip()
+    for c in cards:
+        cs = (c.get("species") or "").lower()
+        cn = (c.get("name") or "").lower()
+        if sp and cs and (sp in cs or cs in sp):
+            return c
+        if nm and cn and (nm in cn or cn in nm):
+            return c
+    return None
+
+
 @app.post("/api/identify")
 def identify(req: IdentifyRequest):
-    """Photo → suggested card fields via Gemini vision. The UI prefills these
-    (all editable) and falls back to manual entry on any failure, so every error
-    returns HTTP 200 with an `{"error": ...}` body rather than raising."""
+    """Photo → suggested card fields via Gemini vision.
+    If user_id is supplied, also returns auto_match (best existing card) and
+    all_cards (full list for manual selection). Falls back gracefully on any
+    error — UI can always fall back to manual entry."""
     candidates = list(UPLOADS_DIR.glob(f"{req.photo_id}.*"))
     if not candidates:
         return {"error": "photo not found"}
@@ -360,16 +376,30 @@ def identify(req: IdentifyRequest):
     except Exception as e:
         return {"error": str(e)}
 
-    # Light normalisation — the model is told the schema, but keep the UI safe.
     kind = str(data.get("kind", "")).lower()
     tags = data.get("tags") or []
-    return {
+    result = {
         "name": str(data.get("name", "")).strip(),
         "species": str(data.get("species", "")).strip(),
         "kind": kind if kind in CARD_KINDS else "plant",
         "tags": [str(t).strip().lower() for t in tags if str(t).strip()][:4],
         "confidence": data.get("confidence", 0),
     }
+
+    # Card matching — only when user_id is provided
+    if req.user_id:
+        user_cards = list(cards_col.find({"user_id": req.user_id}, {"_id": 1, "name": 1, "species": 1, "kind": 1, "tags": 1}))
+        # Serialise ObjectId / UUID _id to string for JSON
+        for c in user_cards:
+            c["id"] = str(c.pop("_id"))
+        auto_match = _find_best_match(result["species"], result["name"], user_cards)
+        result["auto_match"] = auto_match
+        result["all_cards"] = user_cards
+    else:
+        result["auto_match"] = None
+        result["all_cards"] = []
+
+    return result
 
 
 # ════════════════════════════════

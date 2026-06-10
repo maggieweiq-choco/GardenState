@@ -587,6 +587,30 @@
     .btn-ok     { background: var(--g500); color: #fff; font-weight: 600; }
     .btn-ok:disabled { background: #ccc; cursor: default; }
 
+    /* Identify result panel */
+    #identify-result {
+      background: var(--g50); border: 1.5px solid var(--g200);
+      border-radius: 10px; padding: 12px 14px; margin-top: 4px;
+    }
+    .id-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .id-label { font-size: 13px; color: #555; }
+    .id-species { font-weight: 700; color: var(--g700); font-size: 14px; }
+    .id-conf { font-size: 11px; background: var(--g200); color: var(--g700);
+      padding: 2px 7px; border-radius: 999px; font-weight: 600; }
+    .id-match-btn {
+      width: 100%; padding: 9px 12px; border-radius: 8px; border: 1.5px solid var(--g500);
+      background: #fff; color: var(--g700); font-size: 13px; font-weight: 600;
+      cursor: pointer; text-align: left; transition: background .12s; margin-bottom: 8px;
+    }
+    .id-match-btn:hover { background: var(--g100); }
+    .id-match-btn .match-name { font-weight: 700; }
+    .id-divider { font-size: 11px; color: #aaa; text-align: center;
+      margin: 6px 0; letter-spacing: .04em; }
+    .id-select { width: 100%; padding: 8px 10px; border-radius: 8px;
+      border: 1.5px solid var(--g200); font-size: 13px; background: #fff;
+      color: #333; cursor: pointer; }
+    .id-select:focus { outline: none; border-color: var(--g500); }
+
     /* Notifications section in sidebar */
     .notif-section {
       margin: 4px 8px 8px;
@@ -898,6 +922,25 @@
           <button type="button" class="cp-clear" onclick="clearCardPhoto()" title="Remove photo">✕</button>
         </div>
       </div>
+      <!-- Identify result panel — hidden until photo is identified -->
+      <div id="identify-result" hidden>
+        <div class="id-header">
+          <span class="id-label">Detected:</span>
+          <span class="id-species" id="id-species-label"></span>
+          <span class="id-conf" id="id-conf-label"></span>
+        </div>
+        <!-- Auto-match button (shown only when a matching card exists) -->
+        <button type="button" class="id-match-btn" id="id-auto-match-btn" hidden
+                onclick="selectMatchedCard()">
+          ✅ Use existing card: <span class="match-name" id="id-match-name"></span>
+        </button>
+        <div class="id-divider" id="id-divider" hidden>— or choose —</div>
+        <!-- Manual card selector -->
+        <select class="id-select" id="id-card-select" onchange="onCardSelectChange()">
+          <option value="">➕ Create new card</option>
+        </select>
+      </div>
+
       <input id="card-name" type="text" placeholder="Name (e.g. Front-yard narcissus)"
              oninput="updateAddBtn()" onkeydown="if(event.key==='Enter') confirmAdd()">
       <select id="card-kind">
@@ -1531,7 +1574,9 @@ function openEditModal(card) {
 }
 
 // ── Add-card photo → identify ──
-let pendingCardPhotoId = '';   // photo_id to attach to the next created card
+let pendingCardPhotoId = '';     // photo_id to attach to the next created card
+let identifyAllCards   = [];     // full card list returned by /api/identify
+let selectedCardId     = null;   // card chosen via identify panel (null = create new)
 
 function pickCardPhoto() { document.getElementById('card-file').click(); }
 
@@ -1571,12 +1616,12 @@ async function onCardPhotoPicked() {
     const r = await fetch('/api/identify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photo_id: pendingCardPhotoId }),
+      body: JSON.stringify({ photo_id: pendingCardPhotoId, user_id: user?.email || '' }),
     });
     const data = r.ok ? await r.json() : {};
     if (data && !data.error) {
-      prefillFromIdentify(data);
-      status.textContent = '✓ Identified — edit anything below';
+      showIdentifyResult(data);
+      status.textContent = '✓ Identified';
     } else {
       status.textContent = '📷 Photo attached — fill in the details';
     }
@@ -1585,6 +1630,73 @@ async function onCardPhotoPicked() {
       ? '📷 Photo attached — fill in the details'
       : '⚠️ Upload failed — add details manually';
   }
+}
+
+function showIdentifyResult(data) {
+  identifyAllCards = data.all_cards || [];
+  selectedCardId = null;
+
+  // Show detected species + confidence
+  document.getElementById('id-species-label').textContent =
+    data.species || data.name || 'Unknown plant';
+  const pct = Math.round((data.confidence || 0) * 100);
+  document.getElementById('id-conf-label').textContent = pct ? `${pct}%` : '';
+  document.getElementById('identify-result').hidden = false;
+
+  // Auto-match button
+  const autoBtn  = document.getElementById('id-auto-match-btn');
+  const divider  = document.getElementById('id-divider');
+  if (data.auto_match) {
+    document.getElementById('id-match-name').textContent = data.auto_match.name;
+    autoBtn.hidden = false;
+    divider.hidden = false;
+    // Pre-select it but let the user override
+    selectedCardId = data.auto_match.id;
+  } else {
+    autoBtn.hidden = true;
+    divider.hidden = true;
+  }
+
+  // Populate dropdown
+  const sel = document.getElementById('id-card-select');
+  sel.innerHTML = '<option value="">➕ Create new card</option>';
+  for (const c of identifyAllCards) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.name}${c.species ? ' · ' + c.species : ''}`;
+    if (data.auto_match && c.id === data.auto_match.id) opt.selected = true;
+    sel.appendChild(opt);
+  }
+
+  // Prefill form fields for a new card (user can always override)
+  if (!data.auto_match) prefillFromIdentify(data);
+}
+
+function selectMatchedCard() {
+  // User confirmed the auto-match — switch dropdown to that card
+  const autoMatch = identifyAllCards.find(c => c.id === selectedCardId);
+  if (!autoMatch) return;
+  document.getElementById('id-card-select').value = autoMatch.id;
+  onCardSelectChange();
+}
+
+function onCardSelectChange() {
+  const sel = document.getElementById('id-card-select');
+  selectedCardId = sel.value || null;
+  if (selectedCardId) {
+    // Editing an existing card — prefill form from the card's current data
+    const card = identifyAllCards.find(c => c.id === selectedCardId);
+    if (card) {
+      document.getElementById('card-name').value    = card.name || '';
+      document.getElementById('card-species').value = card.species || '';
+      document.getElementById('card-kind').value    = card.kind || 'plant';
+      document.getElementById('card-tags').value    = (card.tags || []).join(', ');
+    }
+    document.getElementById('modal-ok').textContent = 'Update card';
+  } else {
+    document.getElementById('modal-ok').textContent = 'Add';
+  }
+  updateAddBtn();
 }
 
 // Prefill the form from an /api/identify result. Everything stays editable;
@@ -1606,6 +1718,11 @@ function updateAddBtn() {
 
 function closeModal() {
   document.getElementById('modal-overlay').hidden = true;
+  document.getElementById('identify-result').hidden = true;
+  document.getElementById('id-card-select').innerHTML = '<option value="">➕ Create new card</option>';
+  document.getElementById('modal-ok').textContent = 'Add';
+  identifyAllCards = [];
+  selectedCardId = null;
 }
 
 async function confirmAdd() {
@@ -1616,6 +1733,28 @@ async function confirmAdd() {
   const tags     = document.getElementById('card-tags').value
     .split(',').map(s => s.trim()).filter(Boolean);
   const photo_id = pendingCardPhotoId;
+
+  // ── Attach photo to existing card via identify panel ──
+  if (selectedCardId && !editingCardId) {
+    if (!user.isGuest && user.email) {
+      try {
+        await fetch(`/api/cards/${encodeURIComponent(selectedCardId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.email, name, kind, tags, species, photo_id }),
+        });
+        const idx = cards.findIndex(c => (c._id || c.id) === selectedCardId);
+        if (idx !== -1) cards[idx] = { ...cards[idx], name, kind, tags, species, photo_id };
+        else await loadCards();
+      } catch { await loadCards(); }
+    } else {
+      const idx = cards.findIndex(c => (c._id || c.id) === selectedCardId);
+      if (idx !== -1) cards[idx] = { ...cards[idx], name, kind, tags, species, photo_id };
+    }
+    renderCards();
+    closeModal();
+    return;
+  }
 
   // ── Edit mode ──
   if (editingCardId) {
