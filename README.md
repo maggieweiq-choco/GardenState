@@ -46,7 +46,9 @@ ADK Runner  ─── garden_agent/agent.py
 |---|---|
 | **Chat** | Streaming NDJSON via ADK + Gemini 2.5 Flash; history replays on card re-open |
 | **Care cards** | Add, edit, delete plants/areas; photo identifies species + auto-matches to existing cards |
-| **Garden types** | User-managed type list (flower, vegetable, herb, etc.) drives sidebar filter tabs |
+| **Garden types** | User-managed type list (flower, vegetable, herb, etc.) drives sidebar filter tabs; auto-prompted on first login |
+| **Plant status dots** | Color-coded dot on each card (🟢 healthy · 🟡 needs attention · 🔴 urgent · ⚪ not checked); automatically updated after every care check |
+| **Search** | Sidebar search box filters cards by name or species in real-time |
 | **Weather** | Open-Meteo (free, no key) — current conditions + 3-day forecast; city-only fallback for "City, State" input |
 | **Plant care lookup** | Perenual API — watering frequency, sunlight needs, care level |
 | **Sensor data** | Simulated soil moisture / temp / light via time-of-day physics model |
@@ -56,8 +58,9 @@ ADK Runner  ─── garden_agent/agent.py
 | **RAG** | `search_care_knowledge()` embeds query with `gemini-embedding-001`, runs `$vectorSearch` |
 | **Long-term memory** | Facts, preferences, and plant notes stored in `user_memories`, injected as context every turn |
 | **Behavioral adaptation** | Agent adapts tone and detail to the user's experience level (beginner / intermediate / expert) and season |
-| **Chat history** | Per-card transcripts persisted in MongoDB; restored on login across browser restarts |
+| **Chat history** | Per-card transcripts persisted in MongoDB; deterministic session IDs ensure history survives logout/login |
 | **Notifications** | Garden care check across all cards (sensors + weather); configurable frequency + time window |
+| **Mobile-responsive UI** | Off-canvas sidebar, bottom-sheet modals, iOS zoom prevention, touch-friendly targets; works on phone and tablet |
 | **Guest mode** | Full functionality without login; data not persisted to MongoDB |
 
 ---
@@ -151,7 +154,7 @@ Open `http://localhost:8000`.
 ## Key Features in Detail
 
 ### Care Cards
-Each card represents one thing you care for — a single plant, a bed, a lawn, or a whole garden. Cards have a name, kind, species, tags, and optional photo.
+Each card represents one thing you care for — a single plant, a bed, a lawn, or a whole garden. Cards have a name, kind (Flower / Vegetable / Herb / Lawn / Orchard / Trees & Shrubs / Berry / Tropical / Indoor / Succulent), species, tags, and optional photo.
 
 **Photo identification flow:**
 1. Upload any photo (HEIC, JPEG, PNG) in the Add card modal
@@ -162,8 +165,23 @@ Each card represents one thing you care for — a single plant, a bed, a lawn, o
    - **No match / new plant** → "➕ Create new card" pre-fills the form with the identified name and species
 4. Confirming an existing card updates it with the new photo; confirming a new card creates it
 
+### Plant Status Dots
+Every card in the sidebar shows a small color-coded dot at a glance:
+
+| Dot | Color | Meaning |
+|---|---|---|
+| ⚪ | Grey | Not yet checked |
+| 🟢 | Green | Healthy — all good |
+| 🟡 | Yellow | Needs attention (fertilize, minor issue) |
+| 🔴 | Red | Needs immediate action (watering, disease, pest) |
+
+Status is automatically updated every time you run **Check Now**. The parser maps care-check sections (💧 Needs Water Now, 🚨 Disease & Pest Watch → red; 🌿 Fertilize This Week → yellow; ✅ All Looking Good → green) to individual card names.
+
+### Sidebar Search
+A search box above the card list filters by card name or species in real-time. Combined with the garden-type filter tabs, you can quickly find any plant in a large garden.
+
 ### Garden Type Tabs
-Users manage their garden type list (flower, vegetable, herb, lawn, orchard, trees, berry, tropical, indoor, succulent) via a picker in the sidebar. The filter tabs at the top update instantly to match the selected types.
+Users manage their garden type list (Flower, Vegetable, Herb, Lawn, Orchard, Trees & Shrubs, Berry, Tropical, Indoor, Succulent) via a picker in the sidebar. The filter tabs update instantly, and new users are automatically prompted to choose their types on first login. The same type list is used in the Add/Edit card form so names stay consistent everywhere.
 
 ### Long-Term Memory + Chat History
 Two separate persistence layers:
@@ -179,7 +197,7 @@ Two separate persistence layers:
 
 All three blocks are injected as context at the start of every turn and survive logout and browser close.
 
-**Chat history** (`chat_history`): full per-card transcript. Session IDs stored in `localStorage` so history restores correctly after browser close or logout/login.
+**Chat history** (`chat_history`): full per-card transcript. Session IDs are derived deterministically from `email + card_id` (format: `u::<email>::card::<id>`), so history is always recoverable after logout/login — no dependency on `localStorage` keys that could be cleared.
 
 ### Behavioral Adaptation
 The agent automatically adapts based on stored preferences:
@@ -215,6 +233,16 @@ Say "start watering zone A for 20 minutes" or "take a photo of the garden" in ch
 | `skip_watering` | > 2 mm rain expected today or tomorrow | Tells user to skip watering |
 
 Example: asking "should I water today?" when rain is forecast returns *"8 mm of rain expected tomorrow — skip watering today."*
+
+### Mobile UI
+The app is fully responsive with two breakpoints:
+
+| Breakpoint | Layout |
+|---|---|
+| ≤ 860px (tablet) | Sidebar narrows; chat panel adjusts |
+| ≤ 620px (phone) | Sidebar becomes off-canvas (hamburger ☰); all modals slide up as bottom sheets with a drag-handle indicator; inputs locked at 16px to prevent iOS auto-zoom; card action buttons always visible (no hover required) |
+
+On first open (mobile), tap ☰ to open the sidebar. Tap the overlay or swipe-dismiss to close it.
 
 ### Vision
 Photos are converted to JPEG in the browser (handles HEIC from iPhone) before upload. The backend passes image bytes as a `Blob` Part alongside the text to Gemini — the model sees the actual image for true multimodal analysis.
