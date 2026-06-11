@@ -1198,14 +1198,6 @@ async function doLogin() {
 }
 
 function doLogout() {
-  // Remove session-ID keys belonging to this user so a new login starts fresh
-  // (long-term memory and chat history remain in MongoDB, recoverable on next login).
-  if (user?.email) {
-    const prefix = `sid__${user.email}__`;
-    Object.keys(localStorage)
-      .filter(k => k.startsWith(prefix))
-      .forEach(k => localStorage.removeItem(k));
-  }
   localStorage.removeItem('guser');
   user = null; activeCard = null; activeTag = null; cards = [];
   document.getElementById('login-screen').hidden = false;
@@ -2057,14 +2049,16 @@ function renderPreviews() {
   );
 }
 
-function sessionKey() {
-  if (activeTag) return `sid__${user?.email}__tag_${activeTag}`;
-  return `sid__${user?.email}__card_${activeCard?.id || 'gen'}`;
-}
 function getSessionId() {
-  const k = sessionKey();
-  if (!localStorage.getItem(k)) localStorage.setItem(k, crypto.randomUUID());
-  return localStorage.getItem(k);
+  // Deterministic — derived from email + card/tag so history survives logout/login.
+  // Guests use a random ID scoped to the browser session.
+  if (user?.isGuest) {
+    const k = activeTag ? `guest_tag_${activeTag}` : `guest_card_${activeCard?.id || 'gen'}`;
+    if (!sessionStorage.getItem(k)) sessionStorage.setItem(k, crypto.randomUUID());
+    return sessionStorage.getItem(k);
+  }
+  if (activeTag) return `u::${user.email}::tag::${activeTag}`;
+  return `u::${user.email}::card::${activeCard?.id || 'gen'}`;
 }
 
 function addMsg(role, text, imgs = []) {
