@@ -33,7 +33,7 @@ ADK Runner  ─── garden_agent/agent.py
               ├── chat_history         ← per-card transcript (persistent across sessions)
               ├── sensor_readings
               ├── tasks
-              ├── care_knowledge       ← RAG knowledge base (18 docs, 3072-dim embeddings)
+              ├── care_knowledge       ← RAG knowledge base (39 docs, 3072-dim embeddings)
               ├── user_memories        ← per-user long-term memory (facts + preferences + plant notes)
               └── notification_prefs   ← per-user notification schedule
 ```
@@ -50,7 +50,7 @@ ADK Runner  ─── garden_agent/agent.py
 | **Plant status dots** | Color-coded dot on each card (🟢 healthy · 🟡 needs attention · 🔴 urgent · ⚪ not checked); automatically updated after every care check |
 | **Search** | Sidebar search box filters cards by name or species in real-time |
 | **Weather** | Open-Meteo (free, no key) — current conditions + 3-day forecast; city-only fallback for "City, State" input |
-| **Plant care lookup** | Perenual API — watering frequency, sunlight needs, care level |
+| **Plant care lookup** | Perenual API — watering frequency, sunlight needs, care level; gracefully falls back to agent training knowledge when free-tier data is paywalled |
 | **Sensor data** | Simulated soil moisture / temp / light via time-of-day physics model |
 | **Smart home control** | `control_smart_home()` — start/stop irrigation zones, take camera snapshots |
 | **Vision** | Upload any photo (HEIC, JPEG, PNG) → converted to JPEG → Gemini diagnoses plant health |
@@ -59,7 +59,9 @@ ADK Runner  ─── garden_agent/agent.py
 | **Long-term memory** | Facts, preferences, and plant notes stored in `user_memories`, injected as context every turn |
 | **Behavioral adaptation** | Agent adapts tone and detail to the user's experience level (beginner / intermediate / expert) and season |
 | **Chat history** | Per-card transcripts persisted in MongoDB; deterministic session IDs ensure history survives logout/login |
-| **Notifications** | Garden care check across all cards (sensors + weather); configurable frequency + time window |
+| **Notifications** | **Check Now** and **Set Reminder** buttons in the chat header (top-right); care check runs across all cards (sensors + weather); configurable frequency + time window |
+| **Live temperature** | Current temperature (°C / °F) fetched from Open-Meteo and displayed as a badge next to your location chip — updates whenever your location is set or changed |
+| **Tasks** | Right-side slide-in task panel (📋); user-created and agent-written tasks in one list; pending count badge; filter by All / Pending / Done; add tasks with due date and priority |
 | **Mobile-responsive UI** | Off-canvas sidebar, bottom-sheet modals, iOS zoom prevention, touch-friendly targets; works on phone and tablet |
 | **Guest mode** | Full functionality without login; data not persisted to MongoDB |
 
@@ -148,6 +150,10 @@ Open `http://localhost:8000`.
 | `GET` | `/api/history?user_id=&session_id=` | Replay a card's chat transcript |
 | `POST` | `/chat` | Send a chat message (streaming NDJSON) |
 | `POST` | `/upload` | Upload a plant photo; returns `photo_id` |
+| `GET` | `/api/tasks?user_id=` | List all tasks for a user |
+| `POST` | `/api/tasks` | Create a task (title, priority, due_date, card_id) |
+| `PATCH` | `/api/tasks/{task_id}` | Update a task (done state, title, priority) |
+| `DELETE` | `/api/tasks/{task_id}` | Delete a task |
 
 ---
 
@@ -206,13 +212,43 @@ The agent automatically adapts based on stored preferences:
 - **Preference respect**: advice never recommends an approach the user has excluded, and watering suggestions always use the user's preferred time window.
 
 ### Notifications
-The **🔔 Check Now** button in the sidebar runs the agent across all (or selected) cards — it reads sensors, checks weather, and produces a plain-text report sectioned by:
+**Check Now** and **Set Reminder** are pill buttons in the top-right corner of the chat header — visible at all times without opening the sidebar.
+
+**Check Now** runs the agent across all (or selected) cards — it reads sensors, checks weather, and produces a plain-text report sectioned by:
 - 💧 Needs Water Now
 - 🌿 Fertilize This Week
 - 🚨 Disease & Pest Watch
 - ✅ All Looking Good
 
-**⚙ Set Reminder** configures which cards to watch, frequency (daily / every 2 days / weekly), and preferred time window (morning / afternoon / evening). When you open the app during the configured window and a check is due, the red dot appears automatically.
+After the check completes, card status dots are updated automatically and any agent-recommended tasks are written to the Tasks panel.
+
+**Set Reminder** configures which cards to watch, frequency (daily / every 2 days / weekly), and preferred time window (morning / afternoon / evening). When you open the app during the configured window and a check is due, the red dot appears automatically.
+
+On mobile, both buttons show only their icons to save space.
+
+### Live Temperature
+A temperature badge (`22°C / 72°F`) is displayed next to the location chip in the header. It is fetched from Open-Meteo (free, no key) using the same geocoding flow as weather queries, and refreshes automatically whenever the user's location is updated.
+
+### Tasks
+The **📋** button in the chat header opens a right-side slide-in task panel. Tasks come from two sources:
+
+- **User-created**: add any to-do with a title, optional due date, and priority (high / medium / low)
+- **Agent-written**: after every care check the agent logs recommended actions (watering, fertilising, treatments) to the `tasks` MongoDB collection; these surface automatically in the panel
+
+The panel shows a pending count badge on the 📋 button. Filter between **All**, **Pending**, and **Done** tabs. Tasks can be checked off or deleted inline.
+
+**Task schema in MongoDB (`garden.tasks`):**
+
+| Field | Type | Description |
+|---|---|---|
+| `user_id` | string | Owner |
+| `title` | string | What to do |
+| `done` | bool | Completion state |
+| `priority` | string | `high` / `medium` / `low` |
+| `due_date` | string (ISO) | Optional due date |
+| `card_id` | string | Optional — links task to a specific care card |
+| `source` | string | `user` or `agent` |
+| `created_at` | string (ISO) | Creation timestamp |
 
 ### Smart Home Control (Simulated)
 `control_smart_home(device, action, duration_minutes)` lets the agent control:
@@ -248,7 +284,10 @@ On first open (mobile), tap ☰ to open the sidebar. Tap the overlay or swipe-di
 Photos are converted to JPEG in the browser (handles HEIC from iPhone) before upload. The backend passes image bytes as a `Blob` Part alongside the text to Gemini — the model sees the actual image for true multimodal analysis.
 
 ### RAG — Care Knowledge Base
-18 plant-care documents (tomato, rose, basil, lavender, succulent, mint, pepper, strawberry, cucumber, lettuce, and general soil/pest guides) embedded with `gemini-embedding-001` (3072 dims) and stored in `garden.care_knowledge`. The collection is auto-seeded on first server startup if empty.
+39 plant-care documents covering 24+ species (tomato, rose, basil, lavender, succulent, mint, pepper, strawberry, cucumber, lettuce, orchid / Phalaenopsis, pothos, monstera, snake plant, fiddle-leaf fig, peace lily, rosemary, thyme, blueberry, fruit trees, fern, hibiscus, zucchini, lawn/turf, and general watering / fertilising / seasonal guides) embedded with `gemini-embedding-001` (3072 dims) and stored in `garden.care_knowledge`. The collection is auto-seeded on startup and automatically re-seeded when the stored count is below the expected document count — no manual intervention needed when the knowledge base grows.
+
+### Plant Care Lookup (Perenual + Fallback)
+`get_plant_care(species)` queries the Perenual plant database API for watering frequency, sunlight requirements, and care level. The free tier occasionally returns paywalled placeholder values (`"Upgrade Plans"`); the tool detects these, strips them, and signals the agent to answer from its own training knowledge instead. The agent never tells users "I can't find information" — it always provides a best-effort answer.
 
 ---
 
