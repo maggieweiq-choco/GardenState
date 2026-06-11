@@ -736,12 +736,21 @@ async def get_temperature(location: str = Query(...)):
     """Geocode a city name and return current temperature in °C and °F."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            geo = await client.get(
-                "https://geocoding-api.open-meteo.com/v1/search",
-                params={"name": location, "count": 1, "language": "en", "format": "json"},
-            )
-            geo.raise_for_status()
-            results = geo.json().get("results") or []
+            # Open-Meteo geocoding works best with just the city name.
+            # Try full string first, then fall back to the part before the first comma.
+            candidates = [location]
+            if "," in location:
+                candidates.append(location.split(",")[0].strip())
+            results = []
+            for candidate in candidates:
+                geo = await client.get(
+                    "https://geocoding-api.open-meteo.com/v1/search",
+                    params={"name": candidate, "count": 1, "language": "en", "format": "json"},
+                )
+                geo.raise_for_status()
+                results = geo.json().get("results") or []
+                if results:
+                    break
             if not results:
                 raise HTTPException(status_code=404, detail="Location not found")
             lat, lon = results[0]["latitude"], results[0]["longitude"]
