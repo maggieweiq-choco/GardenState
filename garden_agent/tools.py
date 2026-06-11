@@ -315,10 +315,19 @@ async def get_plant_care(plant_name: str) -> dict:
     """Look up care requirements for a plant species using the Perenual plant database.
 
     Returns watering frequency, sunlight needs, care level, and a care guide summary.
+    Falls back gracefully when the API key is absent or the free tier returns no useful data.
     """
     key = os.getenv("PERENUAL_API_KEY", "")
     if not key:
-        return {"error": "PERENUAL_API_KEY not configured", "plant": plant_name}
+        return {"error": "no_api_key", "plant": plant_name}
+
+    _UPGRADE_MARKER = "Upgrade Plans"
+
+    def _clean(val):
+        """Return None if the value is a Perenual paywall message."""
+        if isinstance(val, str) and _UPGRADE_MARKER in val:
+            return None
+        return val
 
     async with httpx.AsyncClient(timeout=15) as client:
         try:
@@ -329,11 +338,27 @@ async def get_plant_care(plant_name: str) -> dict:
             r.raise_for_status()
             data = r.json().get("data", [])
             if not data:
-                return {"error": f"No results for '{plant_name}'", "plant": plant_name}
+                return {"error": "no_results", "plant": plant_name}
 
-            sp = data[0]
+            # Prefer a result whose common_name or scientific_name actually contains the query.
+            q = plant_name.lower()
+            sp = next(
+                (s for s in data
+                 if q in (s.get("common_name") or "").lower()
+                 or any(q in (n or "").lower() for n in (s.get("scientific_name") or []))),
+                data[0],
+            )
 
-            # Try to fetch care guide for the first result
+            watering   = _clean(sp.get("watering"))
+            sunlight   = [x for x in (sp.get("sunlight") or []) if _clean(x)]
+            care_level = _clean(sp.get("care_level"))
+
+            # If all key fields are paywalled, signal the agent to use its own knowledge.
+            if not watering and not sunlight and not care_level:
+                return {"error": "paywalled", "plant": plant_name,
+                        "note": "Perenual free tier returned no usable data — use training knowledge."}
+
+            # Try to fetch the care guide
             care_sections: dict = {}
             try:
                 cg = await client.get(
@@ -346,6 +371,7 @@ async def get_plant_care(plant_name: str) -> dict:
                         care_sections = {
                             s["type"]: s["description"]
                             for s in guides[0].get("section", [])
+                            if _clean(s.get("description"))
                         }
             except Exception:
                 pass
@@ -353,15 +379,15 @@ async def get_plant_care(plant_name: str) -> dict:
             return {
                 "common_name": sp.get("common_name") or plant_name,
                 "scientific_name": sp.get("scientific_name", []),
-                "watering": sp.get("watering", "unknown"),
-                "sunlight": sp.get("sunlight", []),
-                "care_level": sp.get("care_level", "unknown"),
-                "cycle": sp.get("cycle", "unknown"),
+                "watering": watering or "unknown",
+                "sunlight": sunlight,
+                "care_level": care_level or "unknown",
+                "cycle": _clean(sp.get("cycle")) or "unknown",
                 "indoor": sp.get("indoor", False),
                 "care_guide": care_sections,
             }
         except httpx.HTTPStatusError as e:
-            return {"error": f"Perenual API error {e.response.status_code}", "plant": plant_name}
+            return {"error": f"http_{e.response.status_code}", "plant": plant_name}
         except Exception as e:
             return {"error": str(e), "plant": plant_name}
 
