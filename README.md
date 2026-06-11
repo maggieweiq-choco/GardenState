@@ -52,16 +52,16 @@ ADK Runner  ─── garden_agent/agent.py
 | **Weather** | Open-Meteo (free, no key) — current conditions + 3-day forecast; city-only fallback for "City, State" input |
 | **Plant care lookup** | Perenual API — watering frequency, sunlight needs, care level; gracefully falls back to agent training knowledge when free-tier data is paywalled |
 | **Sensor data** | Simulated soil moisture / temp / light via time-of-day physics model |
-| **Smart home control** | `control_smart_home()` — start/stop irrigation zones, take camera snapshots |
+| **Smart home control** | `control_smart_home()` — start/stop irrigation zones, set recurring watering schedules, take camera snapshots |
 | **Vision** | Upload any photo (HEIC, JPEG, PNG) → converted to JPEG → Gemini diagnoses plant health |
 | **Real-time location** | Browser Geolocation → `/api/geocode` → Google Maps API or Nominatim fallback |
 | **RAG** | `search_care_knowledge()` embeds query with `gemini-embedding-001`, runs `$vectorSearch` |
 | **Long-term memory** | Facts, preferences, and plant notes stored in `user_memories`, injected as context every turn |
 | **Behavioral adaptation** | Agent adapts tone and detail to the user's experience level (beginner / intermediate / expert) and season |
-| **Chat history** | Per-card transcripts persisted in MongoDB; deterministic session IDs ensure history survives logout/login |
+| **Chat history** | Per-card transcripts persisted in MongoDB; deterministic session IDs ensure history survives logout/login; photos are stored with each message and thumbnails are restored on replay |
 | **Notifications** | **Check Now** and **Set Reminder** buttons in the chat header (top-right); care check runs across all cards (sensors + weather); configurable frequency + time window |
 | **Live temperature** | Current temperature (°C / °F) fetched from Open-Meteo and displayed as a badge next to your location chip — updates whenever your location is set or changed |
-| **Tasks** | Right-side slide-in task panel (📋); user-created and agent-written tasks in one list; pending count badge; filter by All / Pending / Done; add tasks with due date and priority |
+| **Tasks** | Right-side slide-in task panel (📋); user-created and agent-written tasks in one list; pending count badge; filter by All / Pending / Done; agent logs tasks when it executes smart-home actions or confirms care actions mid-conversation |
 | **Mobile-responsive UI** | Off-canvas sidebar, bottom-sheet modals, iOS zoom prevention, touch-friendly targets; works on phone and tablet |
 | **Guest mode** | Full functionality without login; data not persisted to MongoDB |
 
@@ -203,7 +203,7 @@ Two separate persistence layers:
 
 All three blocks are injected as context at the start of every turn and survive logout and browser close.
 
-**Chat history** (`chat_history`): full per-card transcript. Session IDs are derived deterministically from `email + card_id` (format: `u::<email>::card::<id>`), so history is always recoverable after logout/login — no dependency on `localStorage` keys that could be cleared.
+**Chat history** (`chat_history`): full per-card transcript. Session IDs are derived deterministically from `email + card_id` (format: `u::<email>::card::<id>`), so history is always recoverable after logout/login — no dependency on `localStorage` keys that could be cleared. Photos sent during chat are stored by `photo_id`; thumbnails are restored when history is replayed (images that no longer exist on disk are silently hidden).
 
 ### Behavioral Adaptation
 The agent automatically adapts based on stored preferences:
@@ -233,7 +233,7 @@ A temperature badge (`22°C / 72°F`) is displayed next to the location chip in 
 The **📋** button in the chat header opens a right-side slide-in task panel. Tasks come from two sources:
 
 - **User-created**: add any to-do with a title, optional due date, and priority (high / medium / low)
-- **Agent-written**: after every care check the agent logs recommended actions (watering, fertilising, treatments) to the `tasks` MongoDB collection; these surface automatically in the panel
+- **Agent-written**: the agent logs a task when it executes a `control_smart_home()` action (e.g. starts irrigation or sets a schedule) or when the user confirms a concrete care action mid-conversation (watering, fertilising, applying a treatment). Tasks are **not** auto-generated during routine care checks — only real conversational actions produce them.
 
 The panel shows a pending count badge on the 📋 button. Filter between **All**, **Pending**, and **Done** tabs. Tasks can be checked off or deleted inline.
 
@@ -251,12 +251,20 @@ The panel shows a pending count badge on the 📋 button. Filter between **All**
 | `created_at` | string (ISO) | Creation timestamp |
 
 ### Smart Home Control (Simulated)
-`control_smart_home(device, action, duration_minutes)` lets the agent control:
-- `irrigation_zone_A` / `irrigation_zone_B` — start/stop watering
+`control_smart_home(device, action, duration_minutes, repeat_days, time_of_day)` lets the agent control:
+- `irrigation_zone_A` / `irrigation_zone_B` — start/stop watering, or set a recurring schedule
 - `camera` — take a garden snapshot (returns a simulated observation)
 - `soil_sensor` — status check
 
-Say "start watering zone A for 20 minutes" or "take a photo of the garden" in chat.
+Supported actions:
+
+| Action | Description | Example phrase |
+|---|---|---|
+| `on` | Start irrigation now for `duration_minutes` | "water zone A for 10 minutes" |
+| `off` | Stop irrigation | "stop watering" |
+| `schedule` | Set a recurring watering schedule for `repeat_days` days at `time_of_day` | "water my lawn every morning for 5 days" |
+| `snapshot` | Take a garden camera photo | "take a photo of the garden" |
+| `status` | Check current device state | "is the irrigation running?" |
 
 ### Weather — Current + 3-Day Forecast
 `get_weather(location)` returns current conditions and a 3-day daily forecast in a single Open-Meteo call (free, no API key). The response includes garden-specific derived alerts:
