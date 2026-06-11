@@ -794,14 +794,124 @@
     /* ════════════════════════════
        MOBILE
     ════════════════════════════ */
+    /* ════════════════════════════
+       RESPONSIVE — TABLET (≤ 860px)
+    ════════════════════════════ */
+    @media (max-width: 860px) {
+      :root { --sidebar-w: 230px; }
+    }
+
+    /* ════════════════════════════
+       RESPONSIVE — MOBILE (≤ 620px)
+    ════════════════════════════ */
     @media (max-width: 620px) {
+      :root {
+        --sidebar-w: 78vw;
+        --header-h: 52px;
+        --footer-h: 64px;
+      }
+
+      /* Sidebar: off-canvas slide-in */
       #sidebar {
         position: fixed; left: 0; top: 0; bottom: 0;
         z-index: 50;
         transform: translateX(-100%);
+        width: var(--sidebar-w);
+        max-width: 320px;
       }
       #sidebar.open { transform: translateX(0); }
       #menu-btn { display: block; }
+
+      /* Chat header */
+      #chat-header { padding: 0 12px; gap: 8px; }
+      #chat-title   { font-size: 14px; }
+      #chat-subtitle { font-size: 11px; }
+      .online-dot { width: 7px; height: 7px; }
+
+      /* Messages */
+      #messages { padding: 10px 10px 4px; gap: 8px; }
+      .bubble { font-size: 13.5px; padding: 8px 11px; }
+      .msg.user  { padding-left: 28px; }
+      .msg.agent { padding-right: 28px; }
+
+      /* Preview strip */
+      #preview-strip { padding: 4px 10px 2px; gap: 6px; }
+
+      /* Footer input */
+      footer {
+        padding: 8px 10px;
+        gap: 6px;
+      }
+      #input {
+        font-size: 15px;  /* prevents iOS zoom on focus */
+        padding: 8px 12px;
+      }
+      #photo-btn  { width: 38px; height: 38px; font-size: 17px; }
+      #send-btn   { width: 38px; height: 38px; }
+      #send-btn svg { width: 15px; height: 15px; }
+
+      /* Modals — full-width bottom sheet */
+      #modal-overlay,
+      #gt-modal-overlay,
+      #check-modal-overlay,
+      #notif-settings-overlay {
+        align-items: flex-end;
+      }
+      .modal,
+      .check-modal,
+      .ns-modal {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 20px 20px 0 0;
+        max-height: 90dvh;
+        overflow-y: auto;
+        padding: 20px 16px 28px;
+      }
+      /* drag handle hint */
+      .modal::before,
+      .check-modal::before,
+      .ns-modal::before {
+        content: "";
+        display: block;
+        width: 36px; height: 4px;
+        background: #ddd; border-radius: 2px;
+        margin: 0 auto 14px;
+      }
+      .modal h3,
+      .check-modal h3,
+      .ns-modal h3 { font-size: 17px; }
+
+      /* Card form inside modal */
+      .card-form input,
+      .card-form select { font-size: 16px; /* prevent iOS zoom */ }
+
+      /* Sidebar garden items — larger touch targets */
+      .g-item { padding: 11px 10px; }
+      .g-item .gi-thumb { width: 38px; height: 38px; font-size: 21px; }
+      .g-item .gi-name  { font-size: 14px; }
+      /* Always show action buttons on mobile (no hover) */
+      .gi-actions { opacity: 1; }
+      .g-item .gi-edit,
+      .g-item .gi-rm { padding: 4px 8px; font-size: 15px; }
+
+      /* Add card button */
+      .add-btn { padding: 12px; font-size: 14px; }
+
+      /* Tag filter chips */
+      .tf-chip { padding: 5px 11px; font-size: 12px; }
+
+      /* Notification section */
+      .notif-section { padding: 10px 12px; }
+      .notif-check-btn,
+      .notif-settings-btn { padding: 9px 10px; font-size: 12px; }
+
+      /* Identify result panel */
+      #identify-result { padding: 10px 12px; }
+      .id-match-btn { padding: 10px 12px; font-size: 13px; }
+
+      /* Welcome screen */
+      .welcome { padding: 40px 16px; }
+      .welcome .big { font-size: 38px; }
     }
   </style>
 </head>
