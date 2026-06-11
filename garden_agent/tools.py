@@ -436,15 +436,23 @@ _CAMERA_OBSERVATIONS = [
 ]
 
 
-def control_smart_home(device: str, action: str, duration_minutes: int = 10) -> dict:
+def control_smart_home(
+    device: str,
+    action: str,
+    duration_minutes: int = 10,
+    repeat_days: int = 0,
+    time_of_day: str = "",
+) -> dict:
     """Control a smart garden device or request a camera snapshot.
 
     device: 'irrigation_zone_A', 'irrigation_zone_B', 'camera', or 'soil_sensor'
-    action: 'on' | 'off' | 'status' | 'snapshot'
-    duration_minutes: how long to run irrigation (only used when action='on')
+    action: 'on' | 'off' | 'status' | 'snapshot' | 'schedule'
+    duration_minutes: how long to run irrigation (used with 'on' and 'schedule')
+    repeat_days: number of days to repeat for 'schedule' (0 = one-time)
+    time_of_day: preferred run time for 'schedule', e.g. '07:00' or 'morning'
 
-    Call this when the user asks to water their garden, stop watering, check device
-    status, or take a photo of the garden.
+    Call this when the user asks to water, stop watering, check device status,
+    take a garden photo, or set up a recurring watering schedule.
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -473,6 +481,27 @@ def control_smart_home(device: str, action: str, duration_minutes: int = 10) -> 
             "status": "stopped",
             "stopped_at": now,
             "message": f"Irrigation {device} stopped.",
+        }
+
+    if action == "schedule" and "irrigation" in device:
+        days = repeat_days if repeat_days > 0 else 1
+        window = f" at {time_of_day}" if time_of_day else " daily"
+        _device_state[device]["schedule"] = {
+            "duration_minutes": duration_minutes,
+            "repeat_days": days,
+            "time_of_day": time_of_day or "morning",
+            "set_at": now,
+        }
+        return {
+            "device": device,
+            "status": "scheduled",
+            "duration_minutes": duration_minutes,
+            "repeat_days": days,
+            "time_of_day": time_of_day or "morning",
+            "message": (
+                f"Recurring schedule set: {device} will run for {duration_minutes} min"
+                f"{window} for the next {days} day{'s' if days != 1 else ''}."
+            ),
         }
 
     if action == "snapshot" and device == "camera":

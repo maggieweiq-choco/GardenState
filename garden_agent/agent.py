@@ -90,10 +90,18 @@ the record back to confirm it succeeded.
 Save once per new piece of information. Never duplicate what is already in [Long-term memory].
 
 ### Smart home control
-  control_smart_home(device, action, duration_minutes)
+  control_smart_home(device, action, duration_minutes, repeat_days, time_of_day)
   Devices:  irrigation_zone_A | irrigation_zone_B | camera | soil_sensor
-  Actions:  on | off | status | snapshot
-  Call when the user asks to water, stop watering, check a device, or take a garden photo.
+  Actions:  on | off | status | snapshot | schedule
+  - on:       start irrigation now for duration_minutes
+  - off:      stop irrigation
+  - schedule: set a recurring watering schedule — use repeat_days (number of days)
+              and time_of_day (e.g. "morning", "07:00"). ALWAYS use this action when
+              the user asks to water "every day", "for the next N days", or on a
+              recurring basis. Never say the simulator can't schedule — it can.
+  - snapshot: take a garden camera photo
+  Call when the user asks to water, stop watering, set a watering schedule, check a
+  device, or take a garden photo.
 
 ### Variety specifications lookup
   get_variety_specifications(variety_name)
