@@ -244,8 +244,15 @@ def list_cards(user_id: str = Query(...)):
     # Cards are created only explicitly (via POST /api/cards or photo identify).
     # Garden types (`users.gardens`) are pure filter chips and never materialize
     # cards, so an empty list stays empty — deleting every card never re-spawns
-    # anything. `_id` is already a str (uuid), so the docs serialize as-is.
-    cards = list(cards_col.find({"user_id": user_id}))
+    # anything.
+    #
+    # IMPORTANT: the agent's MongoDB MCP shares this `plants` collection and
+    # inserts its own docs with a BSON ObjectId `_id` and no card fields
+    # (name/kind/created_at). UI cards always have a string uuid `_id`.
+    # Without the `$type` filter, one MCP-written doc makes FastAPI's JSON
+    # encoder choke on ObjectId → 500 → the frontend silently shows
+    # "No plants or areas yet" even though every card is still in Atlas.
+    cards = list(cards_col.find({"user_id": user_id, "_id": {"$type": "string"}}))
     return {"cards": cards}
 
 
@@ -367,7 +374,8 @@ def identify(req: IdentifyRequest):
 
     # Card matching — only when user_id is provided
     if req.user_id:
-        user_cards = list(cards_col.find({"user_id": req.user_id}, {"_id": 1, "name": 1, "species": 1, "kind": 1, "tags": 1}))
+        user_cards = list(cards_col.find({"user_id": req.user_id, "_id": {"$type": "string"}},
+                                         {"_id": 1, "name": 1, "species": 1, "kind": 1, "tags": 1}))
         # Serialise ObjectId / UUID _id to string for JSON
         for c in user_cards:
             c["id"] = str(c.pop("_id"))
@@ -520,7 +528,7 @@ async def garden_check(req: CheckRequest):
     location = req.location or "your area"
 
     raw_cards = list(cards_col.find(
-        {"user_id": user_id},
+        {"user_id": user_id, "_id": {"$type": "string"}},
         {"_id": 1, "name": 1, "species": 1, "kind": 1},
     ))
     # Filter to selected cards if caller specified a subset
