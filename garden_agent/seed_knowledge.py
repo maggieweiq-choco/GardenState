@@ -188,6 +188,27 @@ DOCS = [
              "carpet), chinch bugs (hot dry spots), armyworms. Treat grubs with beneficial "
              "nematodes or imidacloprid in late summer when larvae are young."},
 
+    {"plant": "orchid", "topic": "reblooming",
+     "text": "Getting a Phalaenopsis to rebloom: after the last flower drops, cut the "
+             "spike just above the 2nd or 3rd node from the base — a healthy plant often "
+             "sends a secondary branch from that node within 8–12 weeks. If the spike "
+             "browns, cut it at the base. The key rebloom trigger is night temperature: "
+             "give the plant 2–4 weeks of cooler nights (13–18 °C, roughly a 10 °C drop "
+             "from daytime) in autumn. Combined with bright indirect light and regular "
+             "weak feeding, most moth orchids rebloom once or twice a year, and each "
+             "flush of blooms lasts 2–3 months."},
+
+    {"plant": "lawn", "topic": "cool-season care (Northeast US)",
+     "text": "Northeast US lawns (New Jersey, New York, New England) are cool-season "
+             "mixes: Kentucky bluegrass, tall fescue, and perennial ryegrass. They grow "
+             "strongest in spring and autumn and semi-dormant in summer heat. Calendar: "
+             "early spring — pre-emergent + light feed once soil hits 13 °C; late spring "
+             "— mow at 7.5–9 cm, sharp blades; summer — raise mowing height, water "
+             "2.5 cm/week in the early morning, never fertilise during a heatwave; "
+             "early autumn (Sep) — the most important window: aerate, overseed thin "
+             "patches, and apply the year's heaviest feed; late autumn — final "
+             "potassium-rich winterising feed after the last mow."},
+
     # ── Pothos ────────────────────────────────────────────────────────────────
     {"plant": "pothos", "topic": "care",
      "text": "Pothos (Epipremnum aureum) is one of the most forgiving houseplants. "
