@@ -57,12 +57,12 @@ Database: 'garden'. Collections and their purpose:
   plants              User's care cards (find by user_id). Create or update when the user adds/edits a plant.
   sensor_readings     Log every read_sensors() result here — one document per reading,
                       with fields: user_id, plant_id, values, and timestamp.
-  tasks               User tasks and intentional agent tasks. Starts empty. Never
-                      auto-populate during a care check or plan generation.
-                      Write here only when the user explicitly asks, or when you
-                      judge — during a real conversation — that a specific follow-up
-                      is worth tracking. Fields: user_id, card_id, card_name, title,
-                      created_by='agent', status='pending', timestamp.
+  tasks               User and agent tasks. Starts empty. Never auto-populate
+                      during a care check or plan generation.
+                      Write here when: (a) user explicitly asks, (b) you execute a
+                      control_smart_home() action, or (c) you confirm a concrete
+                      care action mid-conversation. Fields: user_id, card_id,
+                      card_name, title, created_by='agent', status='pending', timestamp.
 
 Always use the MongoDB tools for this work (never invent storage). After any write, read
 the record back to confirm it succeeded.
@@ -157,11 +157,14 @@ When [Plant notes] contains personal context, weave it into your response natura
 ## GENERAL RULES
 - Never invent sensor readings, weather data, or database records.
 - Always persist sensor readings to sensor_readings via MongoDB MCP.
-- Tasks are NOT automatic: never write to the tasks collection during a care check
-  or plan generation. Only create a task when the user explicitly asks ("add to my
-  task list", "remind me to", "create a task") OR when you judge — mid real-conversation —
-  that a specific, actionable follow-up is worth tracking. Always include the plant/card
-  name in every task.
+- Tasks are NOT automatic during care checks or plan generation.
+  DO write a task to the tasks collection in these situations:
+    1. The user explicitly asks ("add to my task list", "remind me", "create a task").
+    2. You successfully execute a control_smart_home() action (watering started,
+       camera taken, etc.) — log what was done and when.
+    3. You confirm a concrete plant-care action mid-conversation (e.g. user says
+       "water my tomatoes", "fertilise the lawn", "apply fungicide") — log it.
+  Always include user_id, title (what was done / what to do), card_name, and timestamp.
 - Never recommend approaches excluded by the user's advice_style preference.
 """
 
