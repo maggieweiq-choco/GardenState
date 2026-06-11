@@ -221,6 +221,30 @@
     .g-item .gi-rm:hover   { background: rgba(255,255,255,.15); }
     .list-empty { padding: 10px 16px; font-size: 13px; opacity: .55; }
 
+    /* Status dot on cards */
+    .status-dot {
+      width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 6px;
+    }
+    .status-dot.unknown    { background: rgba(255,255,255,.22); }
+    .status-dot.good       { background: #69f0ae; box-shadow: 0 0 0 2px rgba(105,240,174,.3); }
+    .status-dot.attention  { background: #ffd740; box-shadow: 0 0 0 2px rgba(255,215,64,.3); }
+    .status-dot.urgent     { background: #ff5252; box-shadow: 0 0 0 2px rgba(255,82,82,.3); }
+
+    /* Last watered time */
+    .gi-watered { font-size: 10.5px; opacity: .5; margin-top: 2px; }
+
+    /* Sidebar search box */
+    .sb-search {
+      display: block; margin: 0 8px 6px;
+      width: calc(100% - 16px); box-sizing: border-box;
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 10px; padding: 8px 12px;
+      font-size: 13px; color: #fff;
+    }
+    .sb-search::placeholder { color: rgba(255,255,255,.4); }
+    .sb-search:focus { outline: none; background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.4); }
+
     /* Tag filter row */
     .tag-filter {
       display: flex; gap: 6px;
@@ -230,13 +254,13 @@
     }
     .tag-filter::-webkit-scrollbar { display: none; }
     .tf-chip {
-      font-size: 11px; white-space: nowrap;
-      padding: 4px 10px; border-radius: 999px;
-      background: rgba(255,255,255,.1); color: #fff;
-      border: none; cursor: pointer; transition: background .14s;
+      font-size: 12px; white-space: nowrap;
+      padding: 5px 12px; border-radius: 999px;
+      background: rgba(255,255,255,.1); color: rgba(255,255,255,.8);
+      border: 1px solid rgba(255,255,255,.2); cursor: pointer; transition: all .14s;
     }
-    .tf-chip:hover { background: rgba(255,255,255,.2); }
-    .tf-chip.on    { background: rgba(255,255,255,.3); font-weight: 600; }
+    .tf-chip:hover { background: rgba(255,255,255,.2); color: #fff; }
+    .tf-chip.on    { background: #fff; color: var(--g700); font-weight: 700; border-color: transparent; }
 
     .add-btn {
       margin: 8px 8px 10px;
@@ -378,10 +402,31 @@
 
     .welcome {
       text-align: center; color: #bbb;
-      padding: 60px 20px;
+      padding: 50px 24px;
     }
     .welcome .big { font-size: 46px; margin-bottom: 10px; }
     .welcome h2 { font-size: 17px; color: var(--g700); margin-bottom: 5px; }
+    .welcome-overview {
+      display: flex; gap: 10px; margin: 18px 0; justify-content: center;
+    }
+    .wo-stat {
+      background: var(--g50); border: 1px solid var(--g200);
+      border-radius: 12px; padding: 14px 18px; min-width: 100px; flex: 1; max-width: 160px;
+    }
+    .wo-stat-n { font-size: 26px; font-weight: 700; color: var(--g700); }
+    .wo-stat-l { font-size: 11.5px; color: #888; margin-top: 2px; }
+    .wo-urgent .wo-stat-n { color: #e53935; }
+    .wo-attention .wo-stat-n { color: #f9a825; }
+    .welcome-add-btn {
+      margin-top: 18px;
+      display: inline-block; padding: 12px 24px;
+      background: var(--g500); color: #fff;
+      border: none; border-radius: 12px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(56,142,60,.3);
+      transition: background .14s;
+    }
+    .welcome-add-btn:hover { background: var(--g700); }
     .welcome p  { font-size: 13px; }
 
     /* Location setup card */
@@ -632,14 +677,15 @@
     .notif-actions { display: flex; gap: 7px; }
     .notif-check-btn {
       flex: 1;
-      background: rgba(255,255,255,.18);
+      background: var(--g500);
       border: none; color: #fff;
       border-radius: 10px; padding: 11px 8px;
-      font-size: 13px; font-weight: 600;
+      font-size: 13px; font-weight: 700;
       cursor: pointer; transition: background .14s;
       display: flex; align-items: center; justify-content: center; gap: 5px;
+      box-shadow: 0 2px 8px rgba(56,142,60,.35);
     }
-    .notif-check-btn:hover { background: rgba(255,255,255,.28); }
+    .notif-check-btn:hover { background: var(--g700); }
     .notif-settings-btn {
       flex-shrink: 0;
       background: rgba(255,255,255,.06);
@@ -905,6 +951,18 @@
       .notif-check-btn,
       .notif-settings-btn { padding: 9px 10px; font-size: 12px; }
 
+      /* Search + filter */
+      .sb-search { font-size: 16px; } /* iOS zoom prevention */
+      .tf-chip { padding: 5px 10px; font-size: 11.5px; }
+
+      /* Status dot */
+      .status-dot { margin-top: 5px; }
+
+      /* Welcome overview */
+      .welcome-overview { gap: 8px; }
+      .wo-stat { padding: 10px 12px; }
+      .wo-stat-n { font-size: 22px; }
+
       /* Identify result panel */
       #identify-result { padding: 10px 12px; }
       .id-match-btn { padding: 10px 12px; font-size: 13px; }
@@ -954,6 +1012,8 @@
       <button class="sb-edit-types" onclick="openGardenTypeModal()" title="Manage garden types">✎</button>
     </div>
     <div class="tag-filter" id="tag-filter" hidden></div>
+    <input class="sb-search" id="sb-search" type="search" placeholder="🔍 Search plants…"
+           oninput="onSearch(this.value)">
     <div id="garden-list"></div>
     <button class="add-btn" onclick="openModal()">＋ Add Plant or Area</button>
     <div class="notif-section">
@@ -992,7 +1052,8 @@
       <div class="welcome">
         <div class="big">🌿</div>
         <h2>Welcome to your garden!</h2>
-        <p>Select a garden type on the left<br>to start managing it.</p>
+        <div class="welcome-ov"></div>
+        <p>Select a plant on the left to start chatting.</p>
       </div>
     </div>
 
@@ -1183,7 +1244,8 @@ let activeCard = null;    // the selected card object ({ id, name, kind, species
 let activeTag  = null;    // when set, a tag-group thread is open (and activeCard is null)
 let pendingPhotos = [];
 let busy = false;
-let tagFilter = localStorage.getItem('cardTagFilter') || 'All';  // sidebar tag filter
+let tagFilter   = localStorage.getItem('cardTagFilter') || 'All';  // sidebar tag filter
+let searchQuery = '';     // sidebar search box filter
 
 // ════════════════════════════
 //  Login / logout
@@ -1224,6 +1286,7 @@ async function showApp() {
   document.getElementById('sb-email').textContent = user.isGuest ? 'Guest — data not saved' : user.email;
   document.getElementById('guest-banner').hidden  = !user.isGuest;
   await loadCards();
+  renderWelcomeOverview();
   await loadNotifPrefs();   // load notification prefs + check if a check is due
   // First-time users: auto-open garden type picker
   if (!user.gardens?.length) setTimeout(openGardenTypeModal, 300);
@@ -1301,31 +1364,140 @@ function cardTagChips(c) {
   return `<div class="gi-tags">${tags.map(t => `<span class="chip">#${esc(t)}</span>`).join('')}</div>`;
 }
 
+function fmtWatered(iso) {
+  if (!iso) return null;
+  const days = Math.floor((Date.now() - new Date(iso)) / 86400000);
+  if (days === 0) return '💧 watered today';
+  if (days === 1) return '💧 yesterday';
+  if (days < 7)   return `💧 ${days}d ago`;
+  if (days < 30)  return `💧 ${Math.floor(days/7)}w ago`;
+  return `💧 ${Math.floor(days/30)}mo ago`;
+}
+
+function onSearch(q) {
+  searchQuery = q.trim().toLowerCase();
+  renderList();
+}
+
+// Update the welcome overview card counts and the welcome div in the chat area.
+function renderWelcomeOverview() {
+  // Only update if the welcome screen is currently shown.
+  const wDiv = document.querySelector('#messages .welcome');
+  if (!wDiv) return;
+  const total   = cards.length;
+  const urgent  = cards.filter(c => c.status === 'urgent').length;
+  const attn    = cards.filter(c => c.status === 'attention').length;
+  const checked = cards.filter(c => c.status).length;
+
+  let overviewHtml = '';
+  if (total === 0) {
+    overviewHtml = `
+      <button class="welcome-add-btn" onclick="openModal()">＋ Add your first plant</button>`;
+  } else {
+    overviewHtml = `<div class="welcome-overview">
+      <div class="wo-stat">
+        <div class="wo-stat-n">${total}</div>
+        <div class="wo-stat-l">plant${total !== 1 ? 's' : ''} tracked</div>
+      </div>`;
+    if (urgent > 0) overviewHtml += `
+      <div class="wo-stat wo-urgent">
+        <div class="wo-stat-n">${urgent}</div>
+        <div class="wo-stat-l">need${urgent === 1 ? 's' : ''} attention now</div>
+      </div>`;
+    else if (attn > 0) overviewHtml += `
+      <div class="wo-stat wo-attention">
+        <div class="wo-stat-n">${attn}</div>
+        <div class="wo-stat-l">worth checking</div>
+      </div>`;
+    else if (checked > 0) overviewHtml += `
+      <div class="wo-stat">
+        <div class="wo-stat-n">✓</div>
+        <div class="wo-stat-l">all looking good</div>
+      </div>`;
+    overviewHtml += `</div>
+      ${checked === 0 ? '<p style="font-size:12px;margin-top:6px">Run <b>Check Now</b> to see plant status</p>' : ''}`;
+  }
+
+  let ov = wDiv.querySelector('.welcome-ov');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.className = 'welcome-ov';
+    wDiv.querySelector('p')?.before(ov);
+  }
+  ov.innerHTML = overviewHtml;
+}
+
+async function updateCardStatus(cardId, status) {
+  const card = cards.find(c => c.id === cardId);
+  if (!card || card.status === status) return;
+  card.status = status;
+  if (!user?.isGuest && user?.email) {
+    try {
+      await fetch(`/api/cards/${encodeURIComponent(cardId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch(e) { /* non-critical */ }
+  }
+  renderList();
+}
+
+function parseCheckAndUpdateStatuses(text) {
+  let section = null;
+  const updates = {};
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('💧') || line.startsWith('🚨')) section = 'urgent';
+    else if (line.startsWith('🌿'))                      section = 'attention';
+    else if (line.startsWith('✅'))                      section = 'good';
+    else if (section) {
+      cards.forEach(c => {
+        if (line.toLowerCase().includes(c.name.toLowerCase()))
+          updates[c.id] = section;
+      });
+    }
+  }
+  Object.entries(updates).forEach(([id, st]) => updateCardStatus(id, st));
+}
+
 function renderList() {
   renderTagFilter();
   const el = document.getElementById('garden-list');
   el.innerHTML = '';
   if (!cards.length) {
     el.innerHTML = '<div class="list-empty">No plants or areas yet.</div>';
+    renderWelcomeOverview();
     return;
   }
-  const visible = tagFilter === 'All'
-    ? cards
+  let visible = tagFilter === 'All'
+    ? [...cards]
     : cards.filter(c => (c.tags || []).includes(tagFilter));
+  if (searchQuery) {
+    visible = visible.filter(c =>
+      c.name.toLowerCase().includes(searchQuery) ||
+      (c.species || '').toLowerCase().includes(searchQuery)
+    );
+  }
   if (!visible.length) {
-    el.insertAdjacentHTML('beforeend', `<div class="list-empty">No ${esc(tagFilter)} gardens yet.</div>`);
+    el.insertAdjacentHTML('beforeend', `<div class="list-empty">No results.</div>`);
     return;
   }
   visible.forEach(c => {
     const div = document.createElement('div');
     div.className = 'g-item' + (activeCard?.id === c.id ? ' active' : '');
+    const wateredHtml = c.last_watered
+      ? `<div class="gi-watered">${fmtWatered(c.last_watered)}</div>` : '';
     div.innerHTML =
       `<span class="gi-thumb">${cardThumb(c)}</span>
        <div class="gi-body">
          <div class="gi-name">${esc(c.name)}</div>
          ${c.species ? `<div class="gi-sub">${esc(c.species)}</div>` : ''}
+         ${wateredHtml}
          ${cardTagChips(c)}
        </div>
+       <span class="status-dot ${c.status || 'unknown'}" title="${c.status || 'Not checked'}"></span>
        <div class="gi-actions">
          <button class="gi-edit" title="Edit">✎</button>
          <button class="gi-rm"   title="Remove">✕</button>
@@ -1335,6 +1507,7 @@ function renderList() {
     div.addEventListener('click', () => selectCard(c));
     el.appendChild(div);
   });
+  renderWelcomeOverview();
 }
 
 // Card facts under the chat title: species + tag chips (falls back to "<user>'s <kind>").
@@ -1634,8 +1807,10 @@ async function removeCard(id) {
       <div class="welcome">
         <div class="big">🌿</div>
         <h2>Welcome to your garden!</h2>
-        <p>Select a card on the left to start managing it.</p>
+        <div class="welcome-ov"></div>
+        <p>Select a plant on the left to start chatting.</p>
       </div>`;
+    renderWelcomeOverview();
   }
   renderList();
 }
@@ -2476,7 +2651,10 @@ async function runCheck() {
     checkBusy = false;
     recheck.disabled = false;
     recheck.textContent = '↻ Re-check';
-    if (resultText) scheduleNextCheck();   // reset the countdown after a successful check
+    if (resultText) {
+      scheduleNextCheck();   // reset the countdown after a successful check
+      parseCheckAndUpdateStatuses(resultText);
+    }
     const hasAlert = resultText.includes('💧') || resultText.includes('🚨');
     document.getElementById('notif-dot').classList.toggle('show', hasAlert);
   }
