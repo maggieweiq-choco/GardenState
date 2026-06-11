@@ -316,9 +316,40 @@
     .online-dot {
       width: 8px; height: 8px;
       border-radius: 50%; background: #69f0ae;
-      margin-left: auto;
       box-shadow: 0 0 0 3px rgba(105,240,174,.22);
+      flex-shrink: 0;
     }
+
+    /* Header notification buttons */
+    #header-notif {
+      display: flex; align-items: center; gap: 6px;
+      margin-left: auto; flex-shrink: 0;
+    }
+    .hdr-check-btn {
+      position: relative;
+      display: flex; align-items: center; gap: 5px;
+      background: var(--g500); color: #fff;
+      border: none; border-radius: 20px;
+      padding: 6px 14px; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: background .14s;
+      box-shadow: 0 2px 6px rgba(56,142,60,.3);
+      white-space: nowrap;
+    }
+    .hdr-check-btn:hover { background: var(--g700); }
+    .hdr-check-btn .notif-dot {
+      position: absolute; top: 4px; right: 4px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ff5252; border: 1.5px solid #fff;
+      display: none;
+    }
+    .hdr-check-btn .notif-dot.show { display: block; }
+    .hdr-reminder-btn {
+      background: none; border: 1.5px solid var(--g200);
+      border-radius: 20px; padding: 6px 10px;
+      font-size: 14px; color: #666; cursor: pointer;
+      transition: all .14s; white-space: nowrap;
+    }
+    .hdr-reminder-btn:hover { background: var(--g50); border-color: var(--g500); color: var(--g700); }
 
     #messages {
       flex: 1; overflow-y: auto;
@@ -946,10 +977,10 @@
       /* Tag filter chips */
       .tf-chip { padding: 5px 11px; font-size: 12px; }
 
-      /* Notification section */
-      .notif-section { padding: 10px 12px; }
-      .notif-check-btn,
-      .notif-settings-btn { padding: 9px 10px; font-size: 12px; }
+      /* Header notification buttons — icon-only on mobile */
+      .hdr-check-label { display: none; }
+      .hdr-check-btn { padding: 7px 11px; }
+      .hdr-reminder-btn { padding: 6px 9px; font-size: 15px; }
 
       /* Search + filter */
       .sb-search { font-size: 16px; } /* iOS zoom prevention */
@@ -1016,16 +1047,6 @@
            oninput="onSearch(this.value)">
     <div id="garden-list"></div>
     <button class="add-btn" onclick="openModal()">＋ Add Plant or Area</button>
-    <div class="notif-section">
-      <div class="notif-section-lbl">
-        <span class="notif-dot" id="notif-dot"></span>
-        Notifications
-      </div>
-      <div class="notif-actions">
-        <button class="notif-check-btn" onclick="openCheckModal()">🔔 Check Now</button>
-        <button class="notif-settings-btn" onclick="openNotifSettings()">⚙ Set Reminder</button>
-      </div>
-    </div>
     <button class="logout-btn" onclick="doLogout()">⬅ Sign out</button>
   </div>
 
@@ -1043,6 +1064,13 @@
       </div>
       <button id="refresh-plan-btn" class="refresh-btn" hidden onclick="refreshPlan()"
               title="Regenerate this card's care plan">↻ Refresh care plan</button>
+      <div id="header-notif">
+        <button class="hdr-check-btn" onclick="openCheckModal()">
+          <span class="notif-dot" id="notif-dot"></span>
+          🔔 <span class="hdr-check-label">Check Now</span>
+        </button>
+        <button class="hdr-reminder-btn" onclick="openNotifSettings()" title="Set reminder">⚙</button>
+      </div>
       <div class="online-dot"></div>
     </div>
 
