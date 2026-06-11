@@ -517,7 +517,12 @@
       font-size: 12px; color: #888;
       margin-left: 8px;
     }
-    #loc-chip span { color: var(--g700); font-weight: 500; }
+    #loc-chip-text { color: var(--g700); font-weight: 500; }
+    #loc-temp {
+      background: var(--g50); border: 1px solid var(--g200);
+      color: var(--g700); font-weight: 600; font-size: 11.5px;
+      padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+    }
     #loc-chip button {
       background: none; border: none; color: #bbb;
       font-size: 11px; cursor: pointer; padding: 1px 4px;
@@ -1060,6 +1065,7 @@
       </div>
       <div id="loc-chip" hidden>
         📍 <span id="loc-chip-text"></span>
+        <span id="loc-temp" hidden></span>
         <button onclick="changeLocation()" title="Change location">✎</button>
       </div>
       <button id="refresh-plan-btn" class="refresh-btn" hidden onclick="refreshPlan()"
@@ -1700,15 +1706,39 @@ async function submitLocation() {
 }
 
 function updateLocChip(loc) {
-  const chip = document.getElementById('loc-chip');
   document.getElementById('loc-chip-text').textContent = loc;
-  chip.hidden = false;
+  document.getElementById('loc-chip').hidden = false;
+  fetchLocTemp(loc);
+}
+
+async function fetchLocTemp(location) {
+  const el = document.getElementById('loc-temp');
+  el.hidden = true;
+  try {
+    const geo = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`
+    );
+    const geoData = await geo.json();
+    if (!geoData.results?.length) return;
+    const { latitude, longitude } = geoData.results[0];
+
+    const wx = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m`
+    );
+    const wxData = await wx.json();
+    const tempC = wxData.current?.temperature_2m;
+    if (tempC == null) return;
+    const tempF = Math.round(tempC * 9 / 5 + 32);
+    el.textContent = `${Math.round(tempC)}°C / ${tempF}°F`;
+    el.hidden = false;
+  } catch (e) { /* non-critical, fail silently */ }
 }
 
 function changeLocation() {
   user.location = '';
   localStorage.setItem('guser', JSON.stringify(user));
   document.getElementById('loc-chip').hidden = true;
+  document.getElementById('loc-temp').hidden = true;
   if (activeTag) showLocationSetup({ kind: 'garden', name: `your ${activeTag} cards` });
   else if (activeCard) showLocationSetup(activeCard);
 }
