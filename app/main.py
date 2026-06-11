@@ -469,7 +469,9 @@ def get_tasks(user_id: str = Query(...)):
         # Normalise agent-written tasks (use action field as title)
         if not d.get("title") and d.get("action"):
             d["title"] = d["action"]
-        if not d.get("status"):
+        # Only "pending" and "done" are valid; anything else (e.g. agent writes
+        # "completed", "active", or nothing) is treated as pending.
+        if d.get("status") not in ("pending", "done"):
             d["status"] = "pending"
     return {"tasks": docs}
 
