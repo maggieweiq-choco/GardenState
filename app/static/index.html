@@ -1054,11 +1054,7 @@
       <input id="card-name" type="text" placeholder="Name (e.g. Front-yard narcissus)"
              oninput="updateAddBtn()" onkeydown="if(event.key==='Enter') confirmAdd()">
       <select id="card-kind">
-        <option value="plant">🌱 Plant</option>
-        <option value="bed">🌸 Bed</option>
-        <option value="lawn">🌿 Lawn</option>
-        <option value="indoor">🪴 Indoor</option>
-        <option value="garden">🏡 Whole garden</option>
+        <!-- populated dynamically from GARDEN_TYPES in openModal() -->
       </select>
       <input id="card-species" type="text" placeholder="Species (optional)">
       <input id="card-tags" type="text" placeholder="Tags, comma-separated (optional)">
@@ -1150,6 +1146,7 @@
 //  Data
 // ════════════════════════════
 // Card kinds (facets). Emoji drives the sidebar + location-setup icon.
+// Legacy kind values kept for backward-compat with old cards in MongoDB
 const KIND_EMOJI = { plant: "🌱", bed: "🌸", lawn: "🌿", indoor: "🪴", garden: "🏡" };
 
 // Master list of garden types users can pick from.
@@ -1165,7 +1162,17 @@ const GARDEN_TYPES = [
   { id: "indoor",    emoji: "🪴", label: "Indoor" },
   { id: "succulent", emoji: "🌵", label: "Succulent" },
 ];
-const kindEmoji = (k) => KIND_EMOJI[k] || "🌱";
+const kindEmoji = (k) => {
+  const gt = GARDEN_TYPES.find(g => g.id === k);
+  return gt ? gt.emoji : (KIND_EMOJI[k] || "🌱");
+};
+
+function populateKindSelect(selectedValue) {
+  const sel = document.getElementById('card-kind');
+  sel.innerHTML = GARDEN_TYPES.map(g =>
+    `<option value="${g.id}"${g.id === selectedValue ? ' selected' : ''}>${g.emoji} ${g.label}</option>`
+  ).join('');
+}
 
 // ════════════════════════════
 //  State
@@ -1643,7 +1650,7 @@ function openModal() {
   document.getElementById('modal-title').textContent = 'Add a Plant or Area';
   document.getElementById('modal-ok').textContent = 'Add';
   document.getElementById('card-name').value = '';
-  document.getElementById('card-kind').value = 'plant';
+  populateKindSelect('flower');
   document.getElementById('card-species').value = '';
   document.getElementById('card-tags').value = '';
   clearCardPhoto();
@@ -1657,7 +1664,7 @@ function openEditModal(card) {
   document.getElementById('modal-title').textContent = 'Edit Garden';
   document.getElementById('modal-ok').textContent = 'Save Changes';
   document.getElementById('card-name').value = card.name || '';
-  document.getElementById('card-kind').value = card.kind || 'plant';
+  populateKindSelect(card.kind || 'flower');
   document.getElementById('card-species').value = card.species || '';
   document.getElementById('card-tags').value = (card.tags || []).join(', ');
   clearCardPhoto();
