@@ -57,6 +57,9 @@ chat_history_col.create_index([("user_id", 1), ("session_id", 1), ("ts", 1)])
 notif_prefs_col = _db["notification_prefs"]
 notif_prefs_col.create_index("user_id", unique=True)
 
+tasks_col = _db["tasks"]
+tasks_col.create_index([("user_id", 1), ("status", 1)])
+
 # Auto-seed care_knowledge on first deploy (no-op if already populated)
 seed_if_empty()
 
@@ -432,6 +435,75 @@ def save_notif_prefs(req: NotifPrefsRequest):
         upsert=True,
     )
     return {"status": "saved"}
+
+
+# ════════════════════════════════
+#  Tasks
+# ════════════════════════════════
+class TaskRequest(BaseModel):
+    user_id: str
+    title: str
+    card_id: str = ""
+    card_name: str = ""
+    due_date: str = ""       # YYYY-MM-DD
+    priority: str = "medium" # low | medium | high
+    created_by: str = "user" # user | agent
+
+class TaskUpdateRequest(BaseModel):
+    status: str = ""    # pending | done
+    title: str = ""
+    due_date: str = ""
+    priority: str = ""
+
+
+@app.get("/api/tasks")
+def get_tasks(user_id: str = Query(...)):
+    from bson import ObjectId
+    docs = list(tasks_col.find({"user_id": user_id}).sort("ts", -1).limit(200))
+    for d in docs:
+        d["id"] = str(d.pop("_id"))
+        # Normalise agent-written tasks (use action field as title)
+        if not d.get("title") and d.get("action"):
+            d["title"] = d["action"]
+        if not d.get("status"):
+            d["status"] = "pending"
+    return {"tasks": docs}
+
+
+@app.post("/api/tasks")
+def create_task(req: TaskRequest):
+    doc = {
+        "user_id": req.user_id,
+        "title": req.title,
+        "card_id": req.card_id,
+        "card_name": req.card_name,
+        "due_date": req.due_date,
+        "priority": req.priority,
+        "created_by": req.created_by,
+        "status": "pending",
+        "ts": datetime.utcnow().isoformat(),
+    }
+    result = tasks_col.insert_one(doc)
+    doc["id"] = str(result.inserted_id)
+    del doc["_id"]
+    return doc
+
+
+@app.patch("/api/tasks/{task_id}")
+def update_task(task_id: str, req: TaskUpdateRequest):
+    from bson import ObjectId
+    update = {k: v for k, v in req.dict().items() if v}
+    if not update:
+        raise HTTPException(400, "Nothing to update")
+    tasks_col.update_one({"_id": ObjectId(task_id)}, {"$set": update})
+    return {"ok": True}
+
+
+@app.delete("/api/tasks/{task_id}")
+def delete_task(task_id: str):
+    from bson import ObjectId
+    tasks_col.delete_one({"_id": ObjectId(task_id)})
+    return {"ok": True}
 
 
 @app.post("/api/check")
