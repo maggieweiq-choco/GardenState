@@ -1226,6 +1226,8 @@ async function showApp() {
   document.getElementById('guest-banner').hidden  = !user.isGuest;
   await loadCards();
   await loadNotifPrefs();   // load notification prefs + check if a check is due
+  // First-time users: auto-open garden type picker
+  if (!user.gardens?.length) setTimeout(openGardenTypeModal, 300);
 }
 
 // ════════════════════════════
