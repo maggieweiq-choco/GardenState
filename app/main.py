@@ -60,8 +60,13 @@ notif_prefs_col.create_index("user_id", unique=True)
 # Auto-seed care_knowledge on first deploy (no-op if already populated)
 seed_if_empty()
 
-# Card "kind" facet — must match the frontend KIND set.
-CARD_KINDS = {"plant", "bed", "lawn", "indoor", "garden"}
+# Card "kind" facet — must match the frontend GARDEN_TYPES + legacy values.
+CARD_KINDS = {
+    "flower", "vegetable", "herb", "lawn", "orchard",
+    "tree", "berry", "tropical", "indoor", "succulent",
+    # legacy values kept for backward-compat
+    "plant", "bed", "garden",
+}
 
 # Legacy `users.gardens` type ids → display label, mirroring the frontend TYPES list.
 # Used by the GET /api/cards migration shim.
@@ -381,7 +386,7 @@ def identify(req: IdentifyRequest):
     result = {
         "name": str(data.get("name", "")).strip(),
         "species": str(data.get("species", "")).strip(),
-        "kind": kind if kind in CARD_KINDS else "plant",
+        "kind": kind if kind in CARD_KINDS else "flower",
         "tags": [str(t).strip().lower() for t in tags if str(t).strip()][:4],
         "confidence": data.get("confidence", 0),
     }
