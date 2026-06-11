@@ -729,6 +729,40 @@ def get_history(user_id: str = Query(...), session_id: str = Query(...)):
 
 
 # ════════════════════════════════
+#  Current temperature for location chip
+# ════════════════════════════════
+@app.get("/api/temperature")
+async def get_temperature(location: str = Query(...)):
+    """Geocode a city name and return current temperature in °C and °F."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            geo = await client.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": location, "count": 1, "language": "en", "format": "json"},
+            )
+            geo.raise_for_status()
+            results = geo.json().get("results") or []
+            if not results:
+                raise HTTPException(status_code=404, detail="Location not found")
+            lat, lon = results[0]["latitude"], results[0]["longitude"]
+
+            wx = await client.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={"latitude": lat, "longitude": lon, "current": "temperature_2m"},
+            )
+            wx.raise_for_status()
+            temp_c = wx.json().get("current", {}).get("temperature_2m")
+            if temp_c is None:
+                raise HTTPException(status_code=502, detail="No temperature data")
+            temp_f = round(temp_c * 9 / 5 + 32)
+            return {"temp_c": round(temp_c), "temp_f": temp_f}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ════════════════════════════════
 #  Photo upload
 # ════════════════════════════════
 @app.post("/upload")

@@ -1883,23 +1883,12 @@ async function fetchLocTemp(location) {
   const el = document.getElementById('loc-temp');
   el.hidden = true;
   try {
-    const geo = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`
-    );
-    const geoData = await geo.json();
-    if (!geoData.results?.length) return;
-    const { latitude, longitude } = geoData.results[0];
-
-    const wx = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m`
-    );
-    const wxData = await wx.json();
-    const tempC = wxData.current?.temperature_2m;
-    if (tempC == null) return;
-    const tempF = Math.round(tempC * 9 / 5 + 32);
-    el.textContent = `${Math.round(tempC)}°C / ${tempF}°F`;
+    const r = await fetch(`/api/temperature?location=${encodeURIComponent(location)}`);
+    if (!r.ok) return;
+    const { temp_c, temp_f } = await r.json();
+    el.textContent = `${temp_c}°C / ${temp_f}°F`;
     el.hidden = false;
-  } catch (e) { /* non-critical, fail silently */ }
+  } catch (e) { /* non-critical */ }
 }
 
 function changeLocation() {
