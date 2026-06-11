@@ -1800,7 +1800,7 @@ function onCardSelectChange() {
     if (card) {
       document.getElementById('card-name').value    = card.name || '';
       document.getElementById('card-species').value = card.species || '';
-      document.getElementById('card-kind').value    = card.kind || 'plant';
+      populateKindSelect(card.kind || 'flower');
       document.getElementById('card-tags').value    = (card.tags || []).join(', ');
     }
     document.getElementById('modal-ok').textContent = 'Update card';
@@ -1816,7 +1816,7 @@ function prefillFromIdentify(d) {
   const nameEl = document.getElementById('card-name');
   if (d.name && !nameEl.value.trim()) nameEl.value = d.name;
   if (d.species) document.getElementById('card-species').value = d.species;
-  if (d.kind)    document.getElementById('card-kind').value = d.kind;
+  if (d.kind)    populateKindSelect(d.kind);
   if (Array.isArray(d.tags) && d.tags.length)
     document.getElementById('card-tags').value = d.tags.join(', ');
   updateAddBtn();
