@@ -68,14 +68,6 @@ CARD_KINDS = {
     "plant", "bed", "garden",
 }
 
-# Legacy `users.gardens` type ids → display label, mirroring the frontend TYPES list.
-# Used by the GET /api/cards migration shim.
-_LEGACY_TYPE_LABELS = {
-    "flower": "Flower Garden", "lawn": "Lawn & Grass", "orchard": "Orchard",
-    "vegetable": "Vegetable Garden", "tree": "Trees & Shrubs", "herb": "Herb Garden",
-    "berry": "Berry Garden", "tropical": "Tropical Plants",
-}
-
 # Photos are stored on local disk. On Cloud Run this is ephemeral but safe as long
 # as min-instances=1 (no cold-start data loss within a session). GCS migration is
 # the correct long-term fix when multi-instance or persistence across restarts is needed.
@@ -244,34 +236,13 @@ def remove_garden(req: GardenRequest):
 # ════════════════════════════════
 #  Cards (care subjects)
 # ════════════════════════════════
-def _migrate_legacy_gardens(user_id: str) -> list[dict]:
-    """One-time shim: a user with legacy `users.gardens` but no cards gets one
-    `kind="bed"` area card per legacy type. `users.gardens` is left untouched."""
-    user = users_col.find_one({"email": user_id}, {"_id": 0, "gardens": 1})
-    legacy = (user or {}).get("gardens") or []
-    cards = []
-    for type_id in legacy:
-        cards.append({
-            "_id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "name": _LEGACY_TYPE_LABELS.get(type_id, type_id),
-            "kind": "bed",
-            "species": "",
-            "tags": [type_id],
-            "photo_id": "",
-            "created_at": datetime.utcnow().isoformat(),
-        })
-    if cards:
-        cards_col.insert_many(cards)
-    return cards
-
-
 @app.get("/api/cards")
 def list_cards(user_id: str = Query(...)):
-    # `_id` is already a str (uuid), so the docs serialize as-is.
+    # Cards are created only explicitly (via POST /api/cards or photo identify).
+    # Garden types (`users.gardens`) are pure filter chips and never materialize
+    # cards, so an empty list stays empty — deleting every card never re-spawns
+    # anything. `_id` is already a str (uuid), so the docs serialize as-is.
     cards = list(cards_col.find({"user_id": user_id}))
-    if not cards:
-        cards = _migrate_legacy_gardens(user_id)
     return {"cards": cards}
 
 

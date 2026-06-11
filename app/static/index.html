@@ -1296,8 +1296,8 @@ async function showApp() {
 //  Cards
 // ════════════════════════════
 async function loadCards() {
-  // Logged-in users get cards (incl. legacy garden→card migration) from the
-  // backend; guests keep an in-memory list (data not saved).
+  // Logged-in users get their cards from the backend; guests keep an in-memory
+  // list (data not saved). Garden types are filters only — they never create cards.
   if (!user.isGuest && user.email) {
     try {
       const r = await fetch(`/api/cards?user_id=${encodeURIComponent(user.email)}`);
