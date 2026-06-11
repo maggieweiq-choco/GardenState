@@ -402,16 +402,20 @@ def _memory_context(user_id: str) -> str:
 # ════════════════════════════════
 #  Chat
 # ════════════════════════════════
-def _save_history(user_id: str, session_id: str, card_id: str, role: str, text: str, tag: str = ""):
+def _save_history(user_id: str, session_id: str, card_id: str, role: str, text: str,
+                  tag: str = "", photo_id: str = ""):
     """Append one message to a thread transcript (per-card, or per tag-group when
     `tag` is set). Best-effort: a logging failure must never break the chat stream."""
     if not text:
         return
     try:
-        chat_history_col.insert_one({
+        doc = {
             "user_id": user_id, "session_id": session_id, "card_id": card_id, "tag": tag,
             "role": role, "text": text, "ts": datetime.utcnow().isoformat(),
-        })
+        }
+        if photo_id:
+            doc["photo_id"] = photo_id
+        chat_history_col.insert_one(doc)
     except Exception:
         pass
 
@@ -552,7 +556,8 @@ async def garden_check(req: CheckRequest):
         f"(risks from weather + plant type — e.g. late blight, aphids — one sentence each)\n\n"
         f"✅ All Looking Good\n"
         f"(plants needing no action right now)\n\n"
-        f"Rules: plain text only, no asterisks, no markdown. Name each plant. One sentence per item. Be direct."
+        f"Rules: plain text only, no asterisks, no markdown. Name each plant. One sentence per item. Be direct. "
+        f"Do not create or write tasks during this check."
     )
 
     check_session_id = f"check_{uuid.uuid4().hex}"
@@ -619,7 +624,7 @@ async def chat(req: ChatRequest):
             attrs.append(f'species={card["species"]}')
         if card.get("tags"):
             attrs.append(f'tags={"/".join(card["tags"])}')
-        card_part = f', card="{card.get("name", "")}" ({", ".join(attrs)})'
+        card_part = f', card_id={req.card_id}, card="{card.get("name", "")}" ({", ".join(attrs)})'
         loc = f", location={req.location}" if req.location else ""
         context = f"[Context: user_id={user_id}{user_part}{card_part}{loc}]\n"
     elif req.tag:
@@ -628,7 +633,7 @@ async def chat(req: ChatRequest):
         descs = []
         for c in group:
             bits = [c.get("kind", "")] + ([c["species"]] if c.get("species") else [])
-            descs.append(f'{c.get("name", "")} ({", ".join(b for b in bits if b)})')
+            descs.append(f'{c.get("name", "")} [card_id={str(c.get("_id", ""))}] ({", ".join(b for b in bits if b)})')
         cards_str = "; ".join(descs) if descs else "(no cards yet)"
         loc = f", location={req.location}" if req.location else ""
         context = (
@@ -662,7 +667,8 @@ async def chat(req: ChatRequest):
     # Persist the user turn before the run (the care-plan prompt sets save_user=False
     # so its engineered text isn't replayed as a user bubble).
     if req.save_user:
-        _save_history(user_id, req.session_id, req.card_id, "user", req.message, req.tag)
+        _save_history(user_id, req.session_id, req.card_id, "user", req.message, req.tag,
+                      photo_id=req.photo_id)
 
     def _ndjson(obj: dict) -> str:
         return json.dumps(obj, ensure_ascii=False) + "\n"
@@ -712,7 +718,7 @@ def get_history(user_id: str = Query(...), session_id: str = Query(...)):
     cursor = (
         chat_history_col.find(
             {"user_id": user_id, "session_id": session_id},
-            {"_id": 0, "role": 1, "text": 1, "ts": 1},
+            {"_id": 0, "role": 1, "text": 1, "photo_id": 1, "ts": 1},
         )
         .sort("ts", 1)
         .limit(200)

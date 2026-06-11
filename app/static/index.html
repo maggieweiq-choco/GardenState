@@ -1772,7 +1772,10 @@ async function loadHistoryOrPlan(onEmpty) {
         const { messages } = await r.json();
         if (messages && messages.length) {
           document.getElementById('messages').innerHTML = '';
-          messages.forEach(m => addMsg(m.role === 'user' ? 'user' : 'agent', m.text));
+          messages.forEach(m => {
+              const imgs = m.photo_id ? [`/photos/${m.photo_id}.jpg`] : [];
+              addMsg(m.role === 'user' ? 'user' : 'agent', m.text, imgs);
+            });
           return;   // replayed from MongoDB — no agent call, no plan re-generation
         }
       }
@@ -2476,7 +2479,11 @@ function addMsg(role, text, imgs = []) {
   av.textContent = role === 'user' ? '🧑' : '🌿';
   const b = document.createElement('div');
   b.className = 'bubble';
-  imgs.forEach(u => { const im = document.createElement('img'); im.src = u; b.appendChild(im); });
+  imgs.forEach(u => {
+    const im = document.createElement('img'); im.src = u;
+    im.onerror = () => im.remove();   // silently hide photos that no longer exist on disk
+    b.appendChild(im);
+  });
   const sp = document.createElement('span');
   sp.className = 'text'; sp.textContent = text;
   b.appendChild(sp); w.appendChild(av); w.appendChild(b);
